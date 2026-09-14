@@ -16,13 +16,50 @@ function! slides#preview#is_open() abort
   return s:open
 endfunction
 
+function! slides#preview#file() abort
+  call s:tmpdir()
+  return s:next_file
+endfunction
+
 function! s:tmpdir() abort
+  if !empty(get(g:, 'slides_preview_file', ''))
+    let s:next_file = expand(g:slides_preview_file)
+    let s:dir = fnamemodify(s:next_file, ':h')
+    if !isdirectory(s:dir)
+      silent! call mkdir(s:dir, 'p', 0700)
+    endif
+    return s:dir
+  endif
   if empty(s:dir) || !isdirectory(s:dir)
-    let s:dir = fnamemodify(tempname(), ':h') . '/vim-slides-' . getpid()
+    let s:dir = expand('$HOME') . '/.cache/slides.vim'
     silent! call mkdir(s:dir, 'p', 0700)
   endif
   let s:next_file = s:dir . '/next-slide.txt'
   return s:dir
+endfunction
+
+function! slides#preview#listen() abort
+  call s:tmpdir()
+  if !filereadable(s:next_file)
+    call writefile(['(czekam na :SlidesStart)'], s:next_file)
+  endif
+  execute 'edit' fnameescape(s:next_file)
+  setlocal autoread noswapfile nomodifiable nomodified
+  setlocal laststatus=0 nonumber norelativenumber nowrap
+  if exists('s:listen_timer') && s:listen_timer >= 0 && has('timers')
+    call timer_stop(s:listen_timer)
+  endif
+  if has('timers')
+    let s:listen_timer = timer_start(250, function('s:listen_tick'), {'repeat': -1})
+  endif
+  echo 'Podglad slajdow: ' . s:next_file
+endfunction
+
+function! s:listen_tick(...) abort
+  if !bufexists(s:next_file) && bufname('%') !=# s:next_file
+    return
+  endif
+  silent! checktime
 endfunction
 
 function! slides#preview#toggle() abort
@@ -47,9 +84,10 @@ function! slides#preview#open(...) abort
     echohl WarningMsg
     echom 'slides.vim: nie udało się uruchomić okna podglądu. Ustaw g:slides_preview_cmd albo zainstaluj gvim.'
     echohl None
-    if get(g:, 'slides_preview_fallback_split', 1)
+    if get(g:, 'slides_preview_fallback_split', 0)
       call s:fallback_split()
     endif
+    echom 'Podglad: w drugiej konsoli  vim ' . s:next_file . '  |  :SlidesPreviewListen'
     return
   endif
   let s:job = s:spawn(l:cmd)
@@ -168,8 +206,10 @@ function! s:preview_args() abort
         \ '-u', s:preview_vimrc,
         \ '-U', 'NONE',
         \ '--noplugin',
-        \ '--servername', s:server,
         \ ]
+  if has('clientserver')
+    let l:args += ['--servername', s:server]
+  endif
   return l:args + [s:next_file]
 endfunction
 

@@ -13,6 +13,8 @@ let s:state = {
       \ 'orig_lines': 0,
       \ 'orig_winpos': [0, 0],
       \ }
+let s:resizing = 0
+let s:last_csi = [0, 0]
 
 function! slides#is_active() abort
   return get(s:state, 'active', 0)
@@ -151,17 +153,33 @@ function! slides#resize_to(cols, lines) abort
   let l:cols = max([l:cols, 20])
   let l:rows = max([l:rows, 8])
 
-  if has('gui_running')
-    silent! execute 'set columns=' . l:cols
-    silent! execute 'set lines=' . l:rows
-  else
-    " 1) sekwencja xterm CSI 8 ; rows ; cols t — zmienia fizyczne okno
-    call s:csi_resize(l:rows, l:cols)
-    " 2) Vim też aktualizuje swój stan
-    silent! execute 'set columns=' . l:cols
-    silent! execute 'set lines=' . l:rows
+  if s:resizing
+    return [l:cols, l:rows]
   endif
-  redraw
+  if has('gui_running')
+    if &columns == l:cols && &lines == l:rows
+      return [l:cols, l:rows]
+    endif
+    let s:resizing = 1
+    try
+      silent! execute 'set columns=' . l:cols
+      silent! execute 'set lines=' . l:rows
+    finally
+      let s:resizing = 0
+    endtry
+  else
+    " W TUI nie ruszamy &columns/&lines — to odpala VimResized w pętli.
+    " Tylko CSI 8 t (fizyczne okno); Vim dowie się o rozmiarze z terminala.
+    if s:last_csi[0] != l:rows || s:last_csi[1] != l:cols
+      let s:last_csi = [l:rows, l:cols]
+      let s:resizing = 1
+      try
+        call s:csi_resize(l:rows, l:cols)
+      finally
+        let s:resizing = 0
+      endtry
+    endif
+  endif
   return [l:cols, l:rows]
 endfunction
 
@@ -175,8 +193,6 @@ function! s:csi_resize(rows, cols) abort
     silent! call writefile([l:seq], '/dev/tty', 'b')
     return
   endif
-  " ostatnia deska: printf do terminala
-  silent! execute printf('silent !printf ''\033[8;%d;%dt'' > /dev/tty', a:rows, a:cols)
 endfunction
 
 function! s:csi_fullscreen(on) abort
@@ -223,11 +239,19 @@ function! slides#fit_slide(lines) abort
 endfunction
 
 function! slides#resize_current() abort
-  if !s:state.active
+  if !s:state.active || s:resizing
     return
   endif
-  call slides#fit_slide(slides#get_slide(s:state.index))
+  let s:last_csi = [0, 0]
   call s:render()
+endfunction
+
+function! s:on_vim_resized() abort
+  " Tylko przerysuj w aktualnym rozmiarze — NIE wysyłaj CSI (pętla + miganie).
+  if !s:state.active || s:resizing
+    return
+  endif
+  call s:paint(&columns, &lines)
 endfunction
 
 " ---------------------------------------------------------------------------
@@ -269,13 +293,24 @@ function! s:render() abort
   endif
   let l:slide = slides#get_slide(s:state.index)
   let [l:cols, l:rows] = slides#fit_slide(l:slide)
+  " Po CSI terminal może jeszcze mieć stary rozmiar — maluj do max(cel, aktualny).
+  call s:paint(max([l:cols, &columns]), max([l:rows, &lines]))
+  call slides#preview#update(s:state)
+endfunction
+
+function! s:paint(cols, rows) abort
+  if !s:state.active || s:state.present_bufnr < 0
+    return
+  endif
+  let l:slide = slides#get_slide(s:state.index)
+  let l:cols = max([a:cols, 1])
+  let l:rows = max([a:rows, 1])
   let l:body = s:center_lines(l:slide, l:cols, l:rows - 1)
 
   if s:opt('slides_show_status', 1)
     let [l:left, l:right] = s:status_text()
     let l:gap = max([1, l:cols - strdisplaywidth(l:left) - strdisplaywidth(l:right) - 2])
     let l:status = ' ' . l:left . repeat(' ', l:gap) . l:right . ' '
-    " dociągnięcie wysokości: status na dole
     while len(l:body) < l:rows - 2
       call add(l:body, '')
     endwhile
@@ -286,9 +321,7 @@ function! s:render() abort
     call add(l:body, l:status)
   endif
 
-  let l:cur = bufnr('%')
   call s:with_present_buf('call s:write_lines(' . string(l:body) . ')')
-  call slides#preview#update(s:state)
   silent! normal! gg
 endfunction
 
@@ -365,7 +398,7 @@ function! s:apply_present_options() abort
     set guioptions-=b
   endif
 
-  if s:opt('slides_fullscreen', 1)
+  if s:opt('slides_fullscreen', 0)
     call s:csi_fullscreen(1)
   endif
 endfunction
@@ -448,7 +481,7 @@ function! s:prepare_present_buffer() abort
 
   augroup SlidesPresent
     autocmd! * <buffer>
-    autocmd VimResized <buffer> call slides#resize_current()
+    autocmd VimResized <buffer> call s:on_vim_resized()
     autocmd BufWipeout <buffer> call slides#quit()
   augroup END
 
@@ -493,8 +526,8 @@ function! slides#start() abort
     call slides#preview#open(s:state)
   endif
   call s:render()
-  echo printf('Slides: 1/%d   n następny  p poprzedni  s podgląd  q koniec  ? pomoc',
-        \ len(s:state.slides))
+  echo printf('Slides: 1/%d  n/p  q koniec | podglad: vim %s',
+        \ len(s:state.slides), slides#preview#file())
 endfunction
 
 function! slides#next() abort
@@ -539,6 +572,8 @@ function! slides#quit() abort
     return
   endif
   let s:state.active = 0
+  let s:last_csi = [0, 0]
+  let s:resizing = 0
   call slides#preview#close()
   call s:restore_options()
   augroup SlidesPresent

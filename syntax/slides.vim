@@ -2,7 +2,8 @@ if exists('b:current_syntax')
   finish
 endif
 
-syntax match slidesSeparator /^~~~~$/
+" '~' jest atomem regex w Vimie (|/~|) — każdą tyldę trzeba escapować.
+syntax match slidesSeparator /^\~\~\~\~$/
 syntax match slidesHeading /^\s*#\+\s.*$/
 syntax match slidesBullet /^\s*[-*+]\s/
 syntax match slidesNumbered /^\s*\d\+\.\s/
