@@ -111,7 +111,7 @@ let g:slides_vim_exe = 'gvim'
 ## Opcje
 
 ```vim
-let g:slides_separator   = '\n~~~~\n'
+let g:slides_separator_line = '~~~~'
 let g:slides_preview     = 1
 let g:slides_fullscreen  = 1
 let g:slides_resize_mode = 'current'   " albo 'max'

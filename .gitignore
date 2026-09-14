@@ -1,0 +1,6 @@
+.doc/tags
+doc/tags
+*.swp
+*~
+.netrwhist
+.DS_Store

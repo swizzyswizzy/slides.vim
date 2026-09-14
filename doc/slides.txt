@@ -80,8 +80,11 @@ Działają tylko w buforze prezentacji:
 ==============================================================================
 5. Opcje                                                   *slides-options*
 
-*g:slides_separator*
-    Wzorzec |split()|.  Domyślnie: `\n~~~~\n`
+*g:slides_separator_line*
+    Dosłowna zawartość linii-separatora (porównanie ==#, nie regex).
+    Domyślnie: `~~~~`
+    W Vimie znak `~` jest atomem wzorca (|/~|), dlatego slajdy nie są
+    dzielone przez |split()|.
 
 *g:slides_preview*
     Otwierać podgląd przy starcie.  Domyślnie: 1

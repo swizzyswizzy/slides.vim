@@ -41,8 +41,21 @@ function! s:opt(name, default) abort
   return get(g:, a:name, a:default)
 endfunction
 
-function! s:separator_pattern() abort
-  return s:opt('slides_separator', '\n~~~~\n')
+function! s:separator_line() abort
+  " Dosłowna linia-separator. W Vimie '~' jest atomem regex (/~),
+  " dlatego NIE używamy split(..., '\n~~~~\n').
+  return s:opt('slides_separator_line', '~~~~')
+endfunction
+
+function! s:trim_slide(lines) abort
+  let l:slide = copy(a:lines)
+  while len(l:slide) && l:slide[0] =~# '^\s*$'
+    call remove(l:slide, 0)
+  endwhile
+  while len(l:slide) && l:slide[-1] =~# '^\s*$'
+    call remove(l:slide, -1)
+  endwhile
+  return l:slide
 endfunction
 
 " ---------------------------------------------------------------------------
@@ -56,25 +69,25 @@ function! slides#parse_buffer(...) abort
 endfunction
 
 function! slides#parse_lines(lines) abort
-  let l:text = join(a:lines, "\n")
-  let l:text = substitute(l:text, "\r\n", "\n", 'g')
-  let l:text = substitute(l:text, "\r", "\n", 'g')
-  let l:sep = s:separator_pattern()
-  let l:parts = split(l:text, l:sep, 1)
+  let l:sep = s:separator_line()
   let l:slides = []
-  for l:part in l:parts
-    let l:slide = split(l:part, "\n", 1)
-    " obetnij puste linie na brzegach slajdu, zachowaj układ wewnątrz
-    while len(l:slide) && l:slide[0] =~# '^\s*$'
-      call remove(l:slide, 0)
-    endwhile
-    while len(l:slide) && l:slide[-1] =~# '^\s*$'
-      call remove(l:slide, -1)
-    endwhile
-    if !empty(l:slide)
-      call add(l:slides, l:slide)
+  let l:cur = []
+  for l:raw in a:lines
+    let l:line = substitute(l:raw, '\r$', '', '')
+    if l:line ==# l:sep
+      let l:slide = s:trim_slide(l:cur)
+      if !empty(l:slide)
+        call add(l:slides, l:slide)
+      endif
+      let l:cur = []
+    else
+      call add(l:cur, l:line)
     endif
   endfor
+  let l:slide = s:trim_slide(l:cur)
+  if !empty(l:slide)
+    call add(l:slides, l:slide)
+  endif
   return l:slides
 endfunction
 
