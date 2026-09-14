@@ -1,0 +1,175 @@
+*slides.txt*  Prezentacje pełnoekranowe z podglądem na drugim monitorze
+
+==============================================================================
+SPIS TREŚCI                                               *slides-contents*
+
+    1. Wstęp ................ |slides-intro|
+    2. Format slajdów ....... |slides-format|
+    3. Polecenia ............ |slides-commands|
+    4. Klawisze ............. |slides-mappings|
+    5. Opcje ................ |slides-options|
+    6. Drugi monitor ........ |slides-preview|
+    7. Rozmiar okna ......... |slides-resize|
+
+==============================================================================
+1. Wstęp                                                     *slides-intro*
+
+Wtyczka *slides.vim* jest przeznaczona wyłącznie dla Vima 8+ (nie
+Neovim). Pokazuje bufor jako slajdy. Bieżący slajd zajmuje okno
+prezentera (tryb pełnoekranowy). Następny slajd jest otwierany
+w osobnym oknie Vima (najlepiej gvim +clientserver) i przesuwany
+na drugi monitor.
+
+Separator slajdów: linia z czterema tyldami pomiędzy blokami tekstu,
+czyli sekwencja >
+    \n~~~~\n
+<
+
+==============================================================================
+2. Format slajdów                                          *slides-format*
+
+>
+    Tytuł pierwszego slajdu
+
+    • punkt A
+    • punkt B
+    ~~~~
+    Drugi slajd
+    jest zwykłym tekstem.
+    ~~~~
+    Koniec.
+<
+
+Pliki `*.slides` i `*.vsl` dostają filetype `slides`.
+
+==============================================================================
+3. Polecenia                                             *slides-commands*
+
+*:Slides*  *:SlidesStart*
+    Start prezentacji z bieżącego bufora.
+
+*:SlidesNext*  *:SlidesPrev*
+    Następny / poprzedni slajd.
+
+*:SlidesGoto* {n}
+    Skok do slajdu numer {n} (od 1).
+
+*:SlidesQuit*
+    Koniec prezentacji, przywrócenie rozmiaru okna.
+
+*:SlidesTogglePreview*
+    Włącza / wyłącza okno podglądu.
+
+*:SlidesResize*
+    Ponownie dopasowuje okno do bieżącego slajdu.
+
+==============================================================================
+4. Klawisze                                              *slides-mappings*
+
+Działają tylko w buforze prezentacji:
+
+    n  l  <Space>  <Right>  <PageDown>    następny slajd
+    p  h  <BS>     <Left>   <PageUp>      poprzedni slajd
+    g  gg                                 pierwszy slajd
+    G                                     ostatni slajd
+    s                                     podgląd on/off
+    r                                     przelicz rozmiar okna
+    ?                                     krótka pomoc
+    q  <Esc>                              koniec
+
+==============================================================================
+5. Opcje                                                   *slides-options*
+
+*g:slides_separator*
+    Wzorzec |split()|.  Domyślnie: `\n~~~~\n`
+
+*g:slides_preview*
+    Otwierać podgląd przy starcie.  Domyślnie: 1
+
+*g:slides_fullscreen*
+    Prosić terminal/GUI o pełny ekran.  Domyślnie: 1
+
+*g:slides_resize_mode*
+    `current` — okno = najszersza linia BIEŻĄCEGO slajdu (domyślnie)
+    `max`     — okno = najszersza linia w CAŁEJ prezentacji
+                (rozmiar nie skacze przy zmianie slajdu)
+
+*g:slides_pad_x*  *g:slides_pad_y*
+    Margines w kolumnach / wierszach.  Domyślnie: 6 / 3
+
+*g:slides_min_columns*  *g:slides_min_lines*
+    Dolne ograniczenie rozmiaru.  Domyślnie: 40 / 12
+
+*g:slides_max_columns*  *g:slides_max_lines*
+    Górne ograniczenie; 0 = nie ograniczaj sztucznie.  Domyślnie: 0
+
+*g:slides_center_h*  *g:slides_center_v*
+    Wyśrodkowanie treści.  Domyślnie: 1 / 1
+
+*g:slides_show_status*
+    Pasek `nazwa  3 / 12` na dole.  Domyślnie: 1
+
+*g:slides_title*
+    Etykieta na pasku statusu.  Domyślnie: nazwa pliku
+
+*g:slides_vim_exe*
+    Binarka do okna podglądu (`gvim` albo `vim`).
+
+*g:slides_preview_cmd*
+    Pełna komenda uruchamiająca podgląd (lista lub string).
+    Jeśli ustawiona, zastępuje detekcję.
+
+*g:slides_terminal*
+    Wrapper terminala, np. `['kitty', '--title', 'Slides preview']`
+
+*g:slides_preview_winpos*
+    `[x, y]` albo `[x, y, w, h]` — pozycja okna podglądu w pikselach.
+
+*g:slides_monitors*
+    Ręczne monitory: lista słowników `{x, y, w, h, primary}`.
+
+*g:slides_preview_fallback_split*
+    Gdy nie da się odpalić drugiego procesu — pionowy split.  Domyślnie: 1
+
+==============================================================================
+6. Drugi monitor                                          *slides-preview*
+
+Kolejność wyboru okna podglądu:
+
+    1. `g:slides_preview_cmd` jeśli podane
+    2. `gvim --servername` (osobne okno GUI)
+    3. nowy emulator terminala (`kitty`, `alacritty`, `wezterm`,
+       `gnome-terminal`, `konsole`, `xterm`, …) z `vim --servername`
+    4. split w bieżącym Vimie
+
+Pozycja:
+    • Linux/X11: `xrandr` znajduje nie-główny monitor, potem
+      `winpos` (gvim) albo `wmctrl` / `xdotool`
+    • zawsze można wymusić: >
+        let g:slides_preview_winpos = [1920, 80]
+<
+Na Waylandzie automatyczne przesuwanie bywa zablokowane — wtedy
+przeciągnij okno podglądu raz na drugi ekran albo ustaw winpos.
+
+Wymagania podglądu jako osobnego procesu:
+    Vim / gvim z |+clientserver| (gvim zwykle ma).
+    Wtyczka nie obsługuje Neovima.
+
+==============================================================================
+7. Rozmiar okna                                            *slides-resize*
+
+Dla każdego slajdu wtyczka liczy `strdisplaywidth()` najdłuższej linii,
+dodaje `g:slides_pad_x` / `g:slides_pad_y` i:
+
+    • w GUI: `:set columns=` / `:set lines=`
+    • w terminalu: to samo PLUS sekwencja xterm >
+        CSI 8 ; {wiersze} ; {kolumny} t
+<
+czyli `ESC [ 8 ; rows ; cols t`.  Działa w xterm, iTerm2, kitty,
+alacritty, wezterm, GNOME Terminal (gdy WindowOps są włączone).
+
+Jeśli terminal odrzuca zmianę rozmiaru, włącz WindowOps albo użyj
+gvim / MacVim.
+
+==============================================================================
+ vim:tw=78:ft=help:norl:

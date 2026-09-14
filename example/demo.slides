@@ -1,0 +1,47 @@
+vim-slides
+prezentacje w terminalu
+
+
+n  następny slajd
+p  poprzedni slajd
+s  podgląd na drugim monitorze
+q  koniec
+~~~~
+Format
+
+Zwykły tekst.
+Kolejny slajd zaczyna się po linii
+złożonej z czterech znaków tyldy.
+~~~~
+Rozmiar okna
+
+Okno terminala kurczy się
+i rośnie do najszerszej
+linii bieżącego slajdu.
+
+Ten slajd jest wąski.
+~~~~
+Ten slajd jest wyraźnie szerszy od poprzedniego — obserwuj ramkę okna.
+
+Najdłuższa linia steruje columns.
+Liczba wierszy steruje lines.
+~~~~
+Podgląd
+
+Na drugim monitorze widać
+NASTĘPNY slajd.
+
+Jeśli nie da się otworzyć
+osobnego procesu, powstanie
+pionowy podział.
+~~~~
+Konfiguracja (vimrc)
+
+let g:slides_resize_mode = 'current'
+let g:slides_pad_x = 8
+let g:slides_preview_winpos = [1920, 40]
+let g:slides_vim_exe = 'gvim'
+~~~~
+Gotowe.
+
+:SlidesStart
