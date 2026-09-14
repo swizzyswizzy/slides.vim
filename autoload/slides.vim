@@ -465,7 +465,7 @@ function! s:prepare_present_buffer() abort
   nnoremap <silent> <buffer> <Right>   :call slides#next()<CR>
   nnoremap <silent> <buffer> <PageDown>:call slides#next()<CR>
   nnoremap <silent> <buffer> l         :call slides#next()<CR>
-  nnoremap <silent> <buffer> p         :call slides#prev()<CR>
+  nnoremap <silent> <buffer> N         :call slides#prev()<CR>
   nnoremap <silent> <buffer> <BS>      :call slides#prev()<CR>
   nnoremap <silent> <buffer> <Left>    :call slides#prev()<CR>
   nnoremap <silent> <buffer> <PageUp>  :call slides#prev()<CR>
@@ -496,7 +496,7 @@ function! s:apply_colors() abort
 endfunction
 
 function! slides#help() abort
-  echo 'n/l/Spacja/→  następny   p/h/BS/←  poprzedni   g/G  pierwszy/ostatni   s  podgląd   r  rozmiar   q  koniec'
+  echo 'n/l/Spacja/→  następny   N/h/BS/←  poprzedni   g/G  pierwszy/ostatni   s  podgląd   r  rozmiar   q  koniec'
 endfunction
 
 " ---------------------------------------------------------------------------

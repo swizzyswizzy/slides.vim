@@ -1,5 +1,6 @@
 " Mini-konfig okna podglądu (drugi proces Vima).
 " Ładowany przez: vim -u preview.vimrc --noplugin
+" Bufor MUSI zostać przy pliku na dysku — inaczej checktime nic nie widzi.
 
 set nocompatible
 set noswapfile
@@ -7,7 +8,8 @@ set nobackup
 set nowritebackup
 set hidden
 set autoread
-set laststatus=0
+set laststatus=1
+set statusline=\ PODGLAD\ NASTEPNEGO\ %<%f
 set showtabline=0
 set noruler
 set noshowcmd
@@ -20,21 +22,26 @@ set nowrap
 set nolist
 set nocursorline
 set nocursorcolumn
-set nomodifiable
-set nomodified
 if exists('&signcolumn')
   set signcolumn=no
 endif
 
-file [slides-preview]
-
-nnoremap <silent> q    :qa!<CR>
+nnoremap <silent> q     :qa!<CR>
 nnoremap <silent> <Esc> :qa!<CR>
 
 function! SlidesPreviewReload(timer) abort
-  silent! checktime
+  if !&modified
+    silent! checktime
+  endif
 endfunction
 
+augroup SlidesPreview
+  autocmd!
+  autocmd BufReadPost,BufNewFile * setlocal nomodifiable nomodified autoread
+  autocmd FileChangedShell * let v:fcs_choice = 'reload'
+  autocmd FileChangedShellPost * setlocal nomodifiable nomodified
+augroup END
+
 if has('timers')
-  call timer_start(250, 'SlidesPreviewReload', {'repeat': -1})
+  call timer_start(200, 'SlidesPreviewReload', {'repeat': -1})
 endif

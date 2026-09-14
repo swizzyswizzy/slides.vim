@@ -69,7 +69,7 @@ Pliki `*.slides` i `*.vsl` dostają filetype `slides`.
 Działają tylko w buforze prezentacji:
 
     n  l  <Space>  <Right>  <PageDown>    następny slajd
-    p  h  <BS>     <Left>   <PageUp>      poprzedni slajd
+    N  h  <BS>     <Left>   <PageUp>      poprzedni slajd
     g  gg                                 pierwszy slajd
     G                                     ostatni slajd
     s                                     podgląd on/off

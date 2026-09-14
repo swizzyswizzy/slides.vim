@@ -190,27 +190,27 @@ function! s:vim_exe() abort
   if !empty(get(g:, 'slides_vim_exe', ''))
     return g:slides_vim_exe
   endif
-  " gvim daje osobne okno i +clientserver — najlepszy podgląd na 2. monitorze
+  if !empty(v:progpath) && executable(v:progpath)
+    return v:progpath
+  endif
+  if executable('vim')
+    return 'vim'
+  endif
   if executable('gvim')
     return 'gvim'
-  endif
-  if !empty(v:progpath)
-    return v:progpath
   endif
   return 'vim'
 endfunction
 
 function! s:preview_args() abort
-  let l:args = [
+  return [
         \ '-n',
         \ '-u', s:preview_vimrc,
         \ '-U', 'NONE',
         \ '--noplugin',
+        \ '-c', 'set autoread nomodifiable',
+        \ s:next_file,
         \ ]
-  if has('clientserver')
-    let l:args += ['--servername', s:server]
-  endif
-  return l:args + [s:next_file]
 endfunction
 
 function! s:build_cmd() abort
@@ -223,16 +223,13 @@ function! s:build_cmd() abort
 
   let l:exe = s:vim_exe()
   let l:args = s:preview_args()
-
-  if l:exe =~# 'gvim' || has('gui_running')
-    return [l:exe] + l:args
-  endif
-
   let l:term = s:terminal_wrapper()
   if !empty(l:term)
     return l:term + [l:exe] + l:args
   endif
-
+  if l:exe =~# 'gvim'
+    return [l:exe] + l:args
+  endif
   return []
 endfunction
 
@@ -240,13 +237,25 @@ function! s:terminal_wrapper() abort
   if type(get(g:, 'slides_terminal', 0)) == type([]) && !empty(g:slides_terminal)
     return g:slides_terminal
   endif
+
+  " Najpierw ten sam emulator, w którym stoi prezentacja.
+  let l:term = tolower($TERM)
+  if !empty($ALACRITTY_SOCKET) || l:term =~# 'alacritty'
+    if executable('alacritty')
+      return ['alacritty', '--title', 'Slides preview', '-e']
+    endif
+  endif
+  if !empty($KITTY_WINDOW_ID) && executable('kitty')
+    return ['kitty', '--title', 'Slides preview']
+  endif
+
   let l:candidates = [
-        \ ['kitty', '--title', 'Slides preview'],
         \ ['alacritty', '--title', 'Slides preview', '-e'],
+        \ ['kitty', '--title', 'Slides preview'],
         \ ['wezterm', 'start', '--'],
         \ ['gnome-terminal', '--title=Slides preview', '--'],
         \ ['konsole', '--title', 'Slides preview', '-e'],
-        \ ['xfce4-terminal', '--title', 'Slides preview', '-e'],
+        \ ['xfce4-terminal', '--title', 'Slides preview', '-x'],
         \ ['xterm', '-T', 'Slides preview', '-e'],
         \ ['urxvt', '-title', 'Slides preview', '-e'],
         \ ]
@@ -259,8 +268,20 @@ function! s:terminal_wrapper() abort
 endfunction
 
 function! s:spawn(cmd) abort
+  let l:log = s:dir . '/preview-launch.log'
+  call writefile(['CMD: ' . s:join_cmd(a:cmd)], l:log)
   if exists('*job_start')
-    return job_start(a:cmd, {'stoponexit': ''})
+    let l:opts = {
+          \ 'in_io': 'null',
+          \ 'out_io': 'file',
+          \ 'out_name': s:dir . '/preview-out.log',
+          \ 'err_io': 'file',
+          \ 'err_name': s:dir . '/preview-err.log',
+          \ 'stoponexit': '',
+          \ }
+    let l:job = job_start(a:cmd, l:opts)
+    call writefile(['JOB: ' . string(l:job), 'STATUS: ' . job_status(l:job)], l:log, 'a')
+    return l:job
   endif
   call system(s:join_cmd(a:cmd) . ' >/dev/null 2>&1 &')
   return 1

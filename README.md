@@ -72,7 +72,7 @@ git push -u origin main
 
 1. Otwórz plik ze slajdami, np. `example/demo.slides`.
 2. `:SlidesStart` (alias `:Slides`).
-3. `n` / `p` — następny / poprzedni, `s` — podgląd, `q` — koniec.
+3. `n` / `N` — następny / poprzedni, `s` — podgląd, `q` — koniec.
 
 ```
 Tytuł
@@ -121,7 +121,7 @@ let g:slides_min_columns = 40
 let g:slides_min_lines   = 12
 ```
 
-Klawisze w trybie prezentacji: `n` `Space` `→` następny, `p` `BS` `←` poprzedni,
+Klawisze w trybie prezentacji: `n` `Space` `→` następny, `N` `BS` `←` poprzedni,
 `g` / `G` pierwszy / ostatni, `s` podgląd, `r` rozmiar, `q` koniec.
 
 Szczegóły: `:help slides`.
