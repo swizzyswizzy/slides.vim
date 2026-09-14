@@ -15,7 +15,7 @@ nothing else.
 ## Install
 
 ```vim
-Plug 'c64cosmin/slides.vim'
+Plug 'swizzyswizzy/slides.vim'
 ```
 
 ```
@@ -42,8 +42,8 @@ End
 
 | Key | Action |
 |---|---|
-| `n` Space `→` | next |
-| `N` BS `←` | previous |
+| `n ` `→` | next |
+| `Shift+ N` `←` | previous |
 | `g` / `G` | first / last |
 | `s` | toggle preview |
 | `r` | refit window |
@@ -69,6 +69,6 @@ let g:slides_pad_y          = 3
 
 ## Bugs
 
-No pull requests. Open a GitHub **Issue** or write to marek<at>zytko.net.
+Please do not create pull requests with your code. Either open a GitHub **Issue** or write to marek`<at>`zytko.net.
 Include Vim version (`vim --version`), terminal, and the exact command
 that failed. Launch logs live in `~/.cache/slides.vim/`.
