@@ -114,9 +114,19 @@ function! slides#preview#update(...) abort
   if l:next_idx >= l:n
     let l:lines = ['', '', '  (koniec prezentacji)']
     let l:header = printf('PODGLAD  --  koniec  (%d/%d)', l:n, l:n)
+    call slides#image#hide_preview()
   else
-    let l:lines = slides#get_slide(l:next_idx)
+    let l:raw = slides#get_slide(l:next_idx)
     let l:header = printf('PODGLAD NASTEPNEGO  --  slajd %d/%d', l:next_idx + 1, l:n)
+    let l:spec = slides#image#spec(l:raw)
+    if !empty(l:spec)
+      let l:path = slides#image#resolve(l:spec)
+      let l:lines = ['[image]', fnamemodify(l:path, ':t'), l:path]
+      call slides#image#show_preview(l:path)
+    else
+      let l:lines = l:raw
+      call slides#image#hide_preview()
+    endif
   endif
   let l:bar = repeat('-', max([strdisplaywidth(l:header), s:maxw(l:lines), 8]))
   let l:out = [l:header, l:bar, ''] + l:lines

@@ -42,6 +42,14 @@ let g:slides_pad_x = 8
 let g:slides_preview_winpos = [1920, 40]
 let g:slides_vim_exe = 'gvim'
 ~~~~
+Obraz
+
+Sam slajd, jedna linia:
+
+file:example.png
+
+(plik liczony od katalogu prezentacji)
+~~~~
 Gotowe.
 
 :SlidesStart

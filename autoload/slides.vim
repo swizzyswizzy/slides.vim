@@ -292,9 +292,19 @@ function! s:render() abort
     return
   endif
   let l:slide = slides#get_slide(s:state.index)
-  let [l:cols, l:rows] = slides#fit_slide(l:slide)
-  " Po CSI terminal może jeszcze mieć stary rozmiar — maluj do max(cel, aktualny).
-  call s:paint(max([l:cols, &columns]), max([l:rows, &lines]))
+  let l:spec = slides#image#spec(l:slide)
+  if !empty(l:spec)
+    let g:slides_source_dir = slides#image#source_dir(s:state.source_bufnr)
+    let l:path = slides#image#resolve(l:spec)
+    let l:label = ['[image]', fnamemodify(l:path, ':t')]
+    let [l:cols, l:rows] = slides#fit_slide(l:label)
+    call s:paint_lines(l:label, max([l:cols, &columns]), max([l:rows, &lines]))
+    call slides#image#show_current(l:path)
+  else
+    call slides#image#hide_current()
+    let [l:cols, l:rows] = slides#fit_slide(l:slide)
+    call s:paint(max([l:cols, &columns]), max([l:rows, &lines]))
+  endif
   call slides#preview#update(s:state)
 endfunction
 
@@ -302,10 +312,16 @@ function! s:paint(cols, rows) abort
   if !s:state.active || s:state.present_bufnr < 0
     return
   endif
-  let l:slide = slides#get_slide(s:state.index)
+  call s:paint_lines(slides#get_slide(s:state.index), a:cols, a:rows)
+endfunction
+
+function! s:paint_lines(slide, cols, rows) abort
+  if !s:state.active || s:state.present_bufnr < 0
+    return
+  endif
   let l:cols = max([a:cols, 1])
   let l:rows = max([a:rows, 1])
-  let l:body = s:center_lines(l:slide, l:cols, l:rows - 1)
+  let l:body = s:center_lines(a:slide, l:cols, l:rows - 1)
 
   if s:opt('slides_show_status', 1)
     let [l:left, l:right] = s:status_text()
@@ -518,6 +534,7 @@ function! slides#start() abort
   let s:state.slides = l:slides
   let s:state.index = 0
   let s:state.source_bufnr = bufnr('%')
+  let g:slides_source_dir = slides#image#source_dir(s:state.source_bufnr)
   let s:state.source_winid = exists('*win_getid') ? win_getid() : 0
   only
   call s:apply_present_options()
@@ -526,7 +543,7 @@ function! slides#start() abort
     call slides#preview#open(s:state)
   endif
   call s:render()
-  echo printf('Slides: 1/%d  n/p  q koniec | podglad: vim %s',
+  echo printf('Slides: 1/%d  n/N  q koniec | podglad: vim %s',
         \ len(s:state.slides), slides#preview#file())
 endfunction
 
@@ -574,6 +591,7 @@ function! slides#quit() abort
   let s:state.active = 0
   let s:last_csi = [0, 0]
   let s:resizing = 0
+  call slides#image#close()
   call slides#preview#close()
   call s:restore_options()
   augroup SlidesPresent

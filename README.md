@@ -15,7 +15,7 @@ nothing else.
 ## Install
 
 ```vim
-Plug 'swizzyswizzy/slides.vim'
+Plug 'c64cosmin/slides.vim'
 ```
 
 ```
@@ -33,7 +33,19 @@ Title slide
 ~~~~
 Body slide
 ~~~~
+file:shot.png
+~~~~
 End
+```
+
+A slide that is exactly `file:<path>` opens the image full-screen in an
+external viewer (first executable of `feh`, `imv`, `mpv`, `nsxiv`, `sxiv`;
+falls back to `feh`). Path is relative to the `.slides` file. Vim keeps
+the key bindings; the viewer is `always-on-top`. Install `feh` if none
+of the others is present.
+
+```vim
+let g:slides_image_viewer = 'feh'
 ```
 
 ```
@@ -42,8 +54,8 @@ End
 
 | Key | Action |
 |---|---|
-| `n ` `→` | next |
-| `Shift+ N` `←` | previous |
+| `n` Space `→` | next |
+| `N` BS `←` | previous |
 | `g` / `G` | first / last |
 | `s` | toggle preview |
 | `r` | refit window |
@@ -69,6 +81,6 @@ let g:slides_pad_y          = 3
 
 ## Bugs
 
-Please do not create pull requests with your code. Either open a GitHub **Issue** or write to marek`<at>`zytko.net.
+No pull requests. Open a GitHub **Issue** or write to marek<at>zytko.net.
 Include Vim version (`vim --version`), terminal, and the exact command
 that failed. Launch logs live in `~/.cache/slides.vim/`.
