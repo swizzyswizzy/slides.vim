@@ -1,35 +1,27 @@
 " autoload/slides/image.vim
-" Slajd-obraz: jedna linia  file:nazwa.png
-" Render: zewnętrzny podglądarka pełnoekranowa (feh / imv / mpv / nsxiv / sxiv).
+" Slajd-obraz: linia file:nazwa.png → pełny ekran w feh/imv/mpv/nsxiv/sxiv.
 
 let s:job_current = 0
 let s:job_preview = 0
 let s:path_current = ''
 let s:path_preview = ''
-let s:warned = 0
 
 function! slides#image#is_slide(lines) abort
   return !empty(slides#image#spec(a:lines))
 endfunction
 
 function! slides#image#spec(lines) abort
-  if type(a:lines) != type([]) || empty(a:lines)
+  if type(a:lines) != type([])
     return ''
   endif
-  let l:nonempty = []
   for l:line in a:lines
-    if l:line !~# '^\s*$'
-      call add(l:nonempty, l:line)
+    let l:line = substitute(l:line, '^\s\+', '', '')
+    let l:line = substitute(l:line, '\s\+$', '', '')
+    if l:line =~? '^file:'
+      return substitute(l:line, '^file:\s*', '', '')
     endif
   endfor
-  if len(l:nonempty) != 1
-    return ''
-  endif
-  let l:m = matchlist(l:nonempty[0], '\v^\s*file:\s*(\S.*\S|\S)\s*$')
-  if empty(l:m)
-    return ''
-  endif
-  return l:m[1]
+  return ''
 endfunction
 
 function! slides#image#resolve(spec) abort
@@ -40,11 +32,21 @@ function! slides#image#resolve(spec) abort
   if l:raw[0] ==# '/' || l:raw =~# '^\a:[/\\]'
     return simplify(l:raw)
   endif
-  let l:root = getcwd()
+  let l:dirs = []
   if exists('g:slides_source_dir') && !empty(g:slides_source_dir)
-    let l:root = g:slides_source_dir
+    call add(l:dirs, g:slides_source_dir)
   endif
-  return simplify(l:root . '/' . l:raw)
+  call add(l:dirs, getcwd())
+  for l:dir in l:dirs
+    let l:try = simplify(l:dir . '/' . l:raw)
+    if filereadable(l:try)
+      return l:try
+    endif
+  endfor
+  if exists('g:slides_source_dir') && !empty(g:slides_source_dir)
+    return simplify(g:slides_source_dir . '/' . l:raw)
+  endif
+  return simplify(getcwd() . '/' . l:raw)
 endfunction
 
 function! slides#image#source_dir(bufnr) abort
@@ -67,20 +69,29 @@ function! slides#image#viewer() abort
   return 'feh'
 endfunction
 
+function! s:log(msg) abort
+  let l:dir = expand('$HOME') . '/.cache/slides.vim'
+  if !isdirectory(l:dir)
+    call mkdir(l:dir, 'p', 0700)
+  endif
+  call writefile([strftime('%H:%M:%S') . ' ' . a:msg], l:dir . '/image.log', 'a')
+endfunction
+
 function! s:cmd_for(exe, path, fullscreen) abort
   if type(get(g:, 'slides_image_cmd', 0)) == type([]) && !empty(g:slides_image_cmd)
     return g:slides_image_cmd + [a:path]
   endif
   if a:exe ==# 'feh'
     let l:cmd = ['feh', '--auto-zoom', '--hide-pointer', '--no-menus',
-          \ '--image-bg', 'black', '--title', a:fullscreen ? 'slides-current' : 'slides-preview-image']
+          \ '--image-bg', 'black',
+          \ '--title', a:fullscreen ? 'slides-current' : 'slides-preview-image']
     if a:fullscreen
       let l:cmd += ['--fullscreen']
     endif
     return l:cmd + ['--', a:path]
   endif
   if a:exe ==# 'imv'
-    let l:cmd = ['imv', '--background', '1a1a1a']
+    let l:cmd = ['imv']
     if a:fullscreen
       let l:cmd += ['-f']
     endif
@@ -89,7 +100,8 @@ function! s:cmd_for(exe, path, fullscreen) abort
   if a:exe ==# 'mpv'
     let l:cmd = ['mpv', '--image', '--loop-file=inf', '--no-osc',
           \ '--no-input-default-bindings', '--input-vo-keyboard=no',
-          \ '--force-window=yes', '--title=' . (a:fullscreen ? 'slides-current' : 'slides-preview-image')]
+          \ '--force-window=yes',
+          \ '--title=' . (a:fullscreen ? 'slides-current' : 'slides-preview-image')]
     if a:fullscreen
       let l:cmd += ['--fs', '--ontop']
     endif
@@ -106,11 +118,14 @@ function! s:cmd_for(exe, path, fullscreen) abort
 endfunction
 
 function! s:spawn(cmd) abort
+  call s:log('spawn ' . join(a:cmd, ' '))
   if exists('*job_start')
     return job_start(a:cmd, {
           \ 'in_io': 'null',
-          \ 'out_io': 'null',
-          \ 'err_io': 'null',
+          \ 'out_io': 'file',
+          \ 'out_name': expand('$HOME') . '/.cache/slides.vim/image-out.log',
+          \ 'err_io': 'file',
+          \ 'err_name': expand('$HOME') . '/.cache/slides.vim/image-err.log',
           \ 'stoponexit': 'term',
           \ })
   endif
@@ -140,26 +155,19 @@ function! s:alive(job) abort
   return 1
 endfunction
 
-function! s:refocus_vim() abort
-  " Obraz ma zostać on-top, klawisze wracają do Vima.
-  if executable('xdotool')
-    silent! call system('xdotool getactivewindow >/dev/null')
-  endif
+function! s:raise_image(...) abort
+  " Obraz NA WIERZCHU. Vima nie podnosimy — inaczej zasłania feh.
   if executable('wmctrl')
-    silent! call system("wmctrl -r slides-current -b add,above")
-    silent! call system("wmctrl -r slides-preview-image -b add,above")
-    " aktywuj okno, z którego wystartowano prezentację
-    if !empty($WINDOWID)
-      silent! call system('wmctrl -i -a ' . $WINDOWID)
-    endif
-  elseif executable('xdotool')
-    if !empty($WINDOWID)
-      silent! call system('xdotool windowactivate --sync ' . $WINDOWID)
-    endif
+    silent! call system('wmctrl -r slides-current -b add,above,fullscreen')
+    silent! call system('wmctrl -a slides-current')
+  endif
+  if executable('xdotool') && !empty($WINDOWID)
+    " focus klawiatury na Vim, bez podnoszenia okna
+    silent! call system('xdotool windowfocus ' . $WINDOWID)
   endif
 endfunction
 
-function! s:place_preview_image() abort
+function! s:place_preview_image(...) abort
   let l:pos = get(g:, 'slides_preview_winpos', [])
   if len(l:pos) < 2
     return
@@ -168,46 +176,40 @@ function! s:place_preview_image() abort
     silent! call system(printf(
           \ 'wmctrl -r slides-preview-image -e 0,%d,%d,-1,-1',
           \ l:pos[0], l:pos[1]))
-  elseif executable('xdotool')
-    silent! call system(printf(
-          \ 'xdotool search --name slides-preview-image windowmove %%@ %d %d',
-          \ l:pos[0], l:pos[1]))
   endif
 endfunction
 
 function! slides#image#show_current(path) abort
   if empty(a:path)
     call slides#image#hide_current()
-    return
+    return 'empty path'
   endif
+  let l:exe = slides#image#viewer()
   if !filereadable(a:path)
     call slides#image#hide_current()
-    echohl ErrorMsg
-    echom 'slides.vim: nie ma pliku ' . a:path
-    echohl None
-    return
+    call s:log('missing file ' . a:path)
+    return 'brak pliku: ' . a:path
+  endif
+  if !executable(l:exe)
+    call slides#image#hide_current()
+    call s:log('missing viewer ' . l:exe)
+    return 'brak programu ' . l:exe . ' — zainstaluj: sudo apt install feh'
   endif
   if s:path_current ==# a:path && s:alive(s:job_current)
-    return
+    return ''
   endif
   call slides#image#hide_current()
-  let l:exe = slides#image#viewer()
-  if !executable(l:exe)
-    if !s:warned
-      let s:warned = 1
-      echohl ErrorMsg
-      echom 'slides.vim: brak podglądarki obrazów. Zainstaluj feh (albo imv / mpv / nsxiv).'
-      echohl None
-    endif
-    return
-  endif
-  let s:job_current = s:spawn(s:cmd_for(l:exe, a:path, 1))
+  let l:cmd = s:cmd_for(l:exe, a:path, 1)
+  let s:job_current = s:spawn(l:cmd)
   let s:path_current = a:path
+  call s:log('viewer=' . l:exe . ' job=' . string(s:job_current) . ' path=' . a:path)
   if has('timers')
-    call timer_start(250, {-> s:refocus_vim()})
+    call timer_start(200, function('s:raise_image'))
+    call timer_start(600, function('s:raise_image'))
   else
-    call s:refocus_vim()
+    call s:raise_image()
   endif
+  return ''
 endfunction
 
 function! slides#image#show_preview(path) abort
@@ -218,15 +220,15 @@ function! slides#image#show_preview(path) abort
   if s:path_preview ==# a:path && s:alive(s:job_preview)
     return
   endif
-  call slides#image#hide_preview()
   let l:exe = slides#image#viewer()
   if !executable(l:exe)
     return
   endif
+  call slides#image#hide_preview()
   let s:job_preview = s:spawn(s:cmd_for(l:exe, a:path, 0))
   let s:path_preview = a:path
   if has('timers')
-    call timer_start(350, {-> s:place_preview_image()})
+    call timer_start(400, function('s:place_preview_image'))
   endif
 endfunction
 

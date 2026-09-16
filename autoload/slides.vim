@@ -247,8 +247,11 @@ function! slides#resize_current() abort
 endfunction
 
 function! s:on_vim_resized() abort
-  " Tylko przerysuj w aktualnym rozmiarze — NIE wysyłaj CSI (pętla + miganie).
   if !s:state.active || s:resizing
+    return
+  endif
+  let l:slide = slides#get_slide(s:state.index)
+  if !empty(slides#image#spec(l:slide))
     return
   endif
   call s:paint(&columns, &lines)
@@ -296,14 +299,21 @@ function! s:render() abort
   if !empty(l:spec)
     let g:slides_source_dir = slides#image#source_dir(s:state.source_bufnr)
     let l:path = slides#image#resolve(l:spec)
-    let l:label = ['[image]', fnamemodify(l:path, ':t')]
+    let l:err = slides#image#show_current(l:path)
+    if empty(l:err)
+      let l:label = ['[image]', fnamemodify(l:path, ':t')]
+    else
+      let l:label = ['[image error]', l:err]
+      echohl ErrorMsg
+      echom 'slides.vim: ' . l:err
+      echohl None
+    endif
     let [l:cols, l:rows] = slides#fit_slide(l:label)
     call s:paint_lines(l:label, max([l:cols, &columns]), max([l:rows, &lines]))
-    call slides#image#show_current(l:path)
   else
     call slides#image#hide_current()
     let [l:cols, l:rows] = slides#fit_slide(l:slide)
-    call s:paint(max([l:cols, &columns]), max([l:rows, &lines]))
+    call s:paint_lines(l:slide, max([l:cols, &columns]), max([l:rows, &lines]))
   endif
   call slides#preview#update(s:state)
 endfunction
