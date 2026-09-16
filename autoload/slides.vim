@@ -12,6 +12,7 @@ let s:state = {
       \ 'orig_columns': 0,
       \ 'orig_lines': 0,
       \ 'orig_winpos': [0, 0],
+      \ 'fs_on': 0,
       \ }
 let s:resizing = 0
 let s:last_csi = [0, 0]
@@ -230,46 +231,102 @@ function! s:fs_log(msg) abort
   call writefile([strftime('%H:%M:%S') . ' ' . a:msg], l:dir . '/fullscreen.log', 'a')
 endfunction
 
+function! s:alacritty_msg(...) abort
+  if !executable('alacritty') || empty($ALACRITTY_SOCKET)
+    return 'no-socket'
+  endif
+  let l:cmd = ['alacritty', 'msg', '--socket', $ALACRITTY_SOCKET] + a:000
+  let l:out = system(join(map(copy(l:cmd), 'shellescape(v:val)'), ' '))
+  call s:fs_log(join(l:cmd, ' ') . ' => ' . substitute(l:out, '\n', ' ', 'g'))
+  return l:out
+endfunction
+
 function! s:wm_fullscreen(on) abort
-  let l:id = s:wm_id()
-  call s:fs_log((a:on ? 'ON' : 'OFF') . ' id=' . l:id . ' WID=' . $WINDOWID . ' sock=' . $ALACRITTY_SOCKET)
-  let l:flag = a:on ? 'add' : 'remove'
+  let l:way = ($XDG_SESSION_TYPE ==# 'wayland') || ($ALACRITTY_SOCKET =~# 'wayland')
+  let l:awid = !empty($ALACRITTY_WINDOW_ID) ? $ALACRITTY_WINDOW_ID : $WINDOWID
+  call s:fs_log((a:on ? 'ON' : 'OFF') . ' wayland=' . l:way
+        \ . ' ALACRITTY_WINDOW_ID=' . $ALACRITTY_WINDOW_ID
+        \ . ' sock=' . $ALACRITTY_SOCKET
+        \ . ' desktop=' . $XDG_CURRENT_DESKTOP)
 
-  if executable('wmctrl')
-    if !empty(l:id)
-      call s:fs_log(system('wmctrl -i -r ' . l:id . ' -b ' . l:flag . ',fullscreen 2>&1'))
-    endif
-    " Tytuł Alacritty: „vim …" / „Alacritty"
-    call s:fs_log(system('wmctrl -r :ACTIVE: -b ' . l:flag . ',fullscreen 2>&1'))
-    silent! call system('wmctrl -r vim -b ' . l:flag . ',fullscreen')
-    silent! call system('wmctrl -r Alacritty -b ' . l:flag . ',fullscreen')
-  else
-    call s:fs_log('no wmctrl')
-  endif
-
-  if executable('xdotool')
-    let l:op = a:on ? 'add' : 'remove'
-    if !empty(l:id)
-      call s:fs_log(system('xdotool windowstate --' . l:op . ' FULLSCREEN ' . l:id . ' 2>&1'))
-    endif
-    silent! call system('xdotool getactivewindow windowstate --' . l:op . ' FULLSCREEN')
-  else
-    call s:fs_log('no xdotool')
-  endif
-
-  if executable('hyprctl')
-    silent! call system(a:on ? 'hyprctl dispatch fullscreen 1' : 'hyprctl dispatch fullscreen 0')
-  endif
-  if executable('swaymsg')
-    silent! call system(a:on ? 'swaymsg fullscreen enable' : 'swaymsg fullscreen disable')
-  endif
-
+  " 1. Alacritty IPC — jedyne, co działa na Waylandzie bez kompozytora.
   if !empty($ALACRITTY_SOCKET) && executable('alacritty')
     let l:dec = a:on ? 'None' : 'Full'
     let l:mode = a:on ? 'Fullscreen' : 'Windowed'
-    call s:fs_log(system('alacritty msg config "window.decorations=\"' . l:dec . '\"" 2>&1'))
-    call s:fs_log(system('alacritty msg config "window.startup_mode=\"' . l:mode . '\"" 2>&1'))
+    call s:alacritty_msg('config', '-w', l:awid, 'window.decorations="' . l:dec . '"')
+    call s:alacritty_msg('config', '-w', l:awid, 'window.startup_mode="' . l:mode . '"')
+    call s:alacritty_msg('config', '-w', l:awid, 'window.padding.x=0')
+    call s:alacritty_msg('config', '-w', l:awid, 'window.padding.y=0')
+    if !a:on
+      call s:alacritty_msg('config', '--reset')
+    endif
   endif
+
+  " 2. Kompozytor Wayland
+  if executable('hyprctl')
+    call s:fs_log(system(a:on ? 'hyprctl dispatch fullscreen 1' : 'hyprctl dispatch fullscreen 0'))
+  endif
+  if executable('swaymsg')
+    call s:fs_log(system(a:on ? 'swaymsg fullscreen enable' : 'swaymsg fullscreen disable'))
+  endif
+  if executable('niri')
+    call s:fs_log(system('niri msg action fullscreen-window 2>&1'))
+  endif
+  if executable('riverctl')
+    call s:fs_log(system(a:on ? 'riverctl set-fullscreen' : 'riverctl unset-fullscreen'))
+  endif
+
+  " 3. X11 (jeśli sesja jest mieszana)
+  if !l:way
+    let l:id = s:wm_id()
+    let l:flag = a:on ? 'add' : 'remove'
+    if executable('wmctrl')
+      if !empty(l:id)
+        silent! call system('wmctrl -i -r ' . l:id . ' -b ' . l:flag . ',fullscreen')
+      endif
+      silent! call system('wmctrl -r :ACTIVE: -b ' . l:flag . ',fullscreen')
+    endif
+    if executable('xdotool')
+      let l:op = a:on ? 'add' : 'remove'
+      silent! call system('xdotool getactivewindow windowstate --' . l:op . ' FULLSCREEN')
+    endif
+  endif
+
+endfunction
+
+function! s:send_f11() abort
+  " Alacritty na Waylandzie honoruje tylko własne ToggleFullscreen (F11).
+  if executable('wtype')
+    call s:fs_log('wtype F11 => ' . system('wtype -k F11 2>&1'))
+    return 1
+  endif
+  if executable('ydotool')
+    call s:fs_log('ydotool F11 => ' . system('ydotool key 87:1 87:0 2>&1'))
+    return 1
+  endif
+  if executable('dotool')
+    call s:fs_log('dotool F11 => ' . system('printf "key F11\n" | dotool 2>&1'))
+    return 1
+  endif
+  if executable('xdotool')
+    call s:fs_log('xdotool F11 => ' . system('xdotool key --clearmodifiers F11 2>&1'))
+    return 1
+  endif
+  call s:fs_log('brak wtype/ydotool/dotool/xdotool — nie mogę wcisnąć F11')
+  return 0
+endfunction
+
+function! s:toggle_term_fullscreen(on) abort
+  if a:on == get(s:state, 'fs_on', 0)
+    return
+  endif
+  if s:send_f11()
+    let s:state.fs_on = a:on
+  endif
+endfunction
+
+function! s:fs_on_tick(...) abort
+  call s:toggle_term_fullscreen(1)
 endfunction
 
 function! s:csi_fullscreen(on) abort
@@ -287,13 +344,11 @@ function! s:csi_fullscreen(on) abort
     endif
     return
   endif
-  call s:wm_fullscreen(a:on)
-  " Zapas: sekwencje xterm (Alacritty zwykle je olewa).
-  let l:seq = a:on ? "\e[10;1t\e[9;1t" : "\e[10;0t\e[9;0t"
-  if exists('*echoraw')
-    silent! call echoraw(l:seq)
-  elseif filewritable('/dev/tty')
-    silent! call writefile([l:seq], '/dev/tty', 'b')
+  " Alacritty+Wayland: tylko prawdziwy F11 (ToggleFullscreen w toml).
+  if a:on && has('timers')
+    call timer_start(100, function('s:fs_on_tick'))
+  else
+    call s:toggle_term_fullscreen(a:on)
   endif
 endfunction
 
@@ -503,10 +558,22 @@ function! s:apply_present_options() abort
 
   if s:opt('slides_fullscreen', 1)
     call s:csi_fullscreen(1)
+    if has('timers')
+      call timer_start(80, function('s:fs_enter'))
+    else
+      call s:toggle_term_fullscreen(1)
+    endif
+  endif
+endfunction
+
+function! s:fs_enter(...) abort
+  if get(s:state, 'active', 0)
+    call s:toggle_term_fullscreen(1)
   endif
 endfunction
 
 function! s:restore_options() abort
+  call s:toggle_term_fullscreen(0)
   call s:csi_fullscreen(0)
   let l:s = s:state.saved
   if empty(l:s)
@@ -579,6 +646,7 @@ function! s:prepare_present_buffer() abort
   nnoremap <silent> <buffer> gg        :call slides#goto(1)<CR>
   nnoremap <silent> <buffer> G         :call slides#goto(slides#slide_count())<CR>
   nnoremap <silent> <buffer> r         :call slides#resize_current()<CR>
+  nnoremap <silent> <buffer> <F11>     :call slides#fullscreen(1)<CR>
   nnoremap <silent> <buffer> s         :call slides#preview#toggle()<CR>
   nnoremap <silent> <buffer> ?         :call slides#help()<CR>
 
@@ -596,6 +664,11 @@ endfunction
 function! s:apply_colors() abort
   highlight! SlidesStatus ctermfg=8 ctermbg=NONE guifg=#666666 guibg=NONE
   highlight! SlidesBlank ctermbg=NONE guibg=NONE
+endfunction
+
+function! slides#fullscreen(...) abort
+  let l:on = a:0 ? !!a:1 : 1
+  call s:csi_fullscreen(l:on)
 endfunction
 
 function! slides#help() abort

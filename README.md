@@ -1,5 +1,22 @@
 # slides.vim
 
+**Fullscreen is not magic and is not portable.** On Alacritty (Wayland)
+it works only if you bind `ToggleFullscreen` and the plugin can press
+that key (`wtype` / `ydotool` / `xdotool`). Without this config the
+window stays decorated — that is expected, not a bug.
+
+```toml
+# ~/.config/alacritty/alacritty.toml
+[keyboard]
+bindings = [{ key = "F11", action = "ToggleFullscreen" }]
+```
+
+```
+sudo apt install wtype
+```
+
+`:SlidesStart` sends F11; `q` sends F11 again.
+
 Plain-text slide deck for **Vim 8+** (not Neovim).
 
 Slides are blocks of ordinary text split by a line of four tildes (`~~~~`).

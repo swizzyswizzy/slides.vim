@@ -26,6 +26,7 @@ command! -nargs=0 SlidesQuit   call slides#quit()
 command! -nargs=0 SlidesTogglePreview call slides#preview#toggle()
 command! -nargs=0 SlidesPreviewListen call slides#preview#listen()
 command! -nargs=0 SlidesResize call slides#resize_current()
+command! -nargs=0 SlidesFullscreen call slides#fullscreen(1)
 
 nnoremap <silent> <Plug>(slides-start)  :call slides#start()<CR>
 nnoremap <silent> <Plug>(slides-next)   :call slides#next()<CR>
