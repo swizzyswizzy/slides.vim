@@ -35,7 +35,7 @@ nothing else.
 ## Install
 
 ```vim
-Plug 'c64cosmin/slides.vim'
+Plug 'swizzyswizzy/slides.vim'
 ```
 
 ```
