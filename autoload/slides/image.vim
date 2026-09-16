@@ -59,13 +59,8 @@ function! slides#image#source_dir(bufnr) abort
   return fnamemodify(fnamemodify(l:name, ':p'), ':h')
 endfunction
 
-function! s:plugin_root() abort
-  return expand('<sfile>:p:h:h:h')
-endfunction
-
-function! s:view_py() abort
-  return s:plugin_root() . '/autoload/slides/view.py'
-endfunction
+" <sfile> w funkcji to nazwa funkcji, nie plik. Ścieżkę bierzemy przy source.
+let s:view_py = expand('<sfile>:p:h') . '/view.py'
 
 function! s:log(msg) abort
   if !isdirectory(s:cache)
@@ -171,10 +166,10 @@ function! slides#image#show_current(path) abort
     call slides#image#hide_current()
     return 'brak python3 — potrzebny do podglądu obrazu'
   endif
-  let l:py = s:view_py()
+  let l:py = s:view_py
   if !filereadable(l:py)
     call slides#image#hide_current()
-    return 'brak ' . l:py
+    return 'brak ' . l:py . ' (wgraj view.py obok image.vim)'
   endif
   if s:path_current ==# a:path && s:alive(s:job_current)
     return ''
