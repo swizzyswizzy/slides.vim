@@ -1,10 +1,14 @@
 " autoload/slides/image.vim
-" Slajd-obraz: linia file:nazwa.png → pełny ekran w feh/imv/mpv/nsxiv/sxiv.
+" Obraz na wierzchu; n/N/q działają nawet gdy fokus ma podglądarka.
+" Podglądarka pisze komendę do pliku, timer w Vimie ją wykonuje.
 
 let s:job_current = 0
 let s:job_preview = 0
 let s:path_current = ''
 let s:path_preview = ''
+let s:poll_timer = -1
+let s:cache = expand('$HOME') . '/.cache/slides.vim'
+let s:cmdfile = s:cache . '/cmd'
 
 function! slides#image#is_slide(lines) abort
   return !empty(slides#image#spec(a:lines))
@@ -61,7 +65,8 @@ function! slides#image#viewer() abort
   if !empty(get(g:, 'slides_image_viewer', ''))
     return g:slides_image_viewer
   endif
-  for l:exe in ['feh', 'imv', 'mpv', 'nsxiv', 'sxiv']
+  " mpv: izolowany input.conf + --ontop; feh: działa u Ciebie, klawisze przez --action
+  for l:exe in ['mpv', 'feh', 'imv', 'nsxiv', 'sxiv']
     if executable(l:exe)
       return l:exe
     endif
@@ -70,11 +75,44 @@ function! slides#image#viewer() abort
 endfunction
 
 function! s:log(msg) abort
-  let l:dir = expand('$HOME') . '/.cache/slides.vim'
-  if !isdirectory(l:dir)
-    call mkdir(l:dir, 'p', 0700)
+  if !isdirectory(s:cache)
+    call mkdir(s:cache, 'p', 0700)
   endif
-  call writefile([strftime('%H:%M:%S') . ' ' . a:msg], l:dir . '/image.log', 'a')
+  call writefile([strftime('%H:%M:%S') . ' ' . a:msg], s:cache . '/image.log', 'a')
+endfunction
+
+function! s:write_cmd(name) abort
+  if !isdirectory(s:cache)
+    call mkdir(s:cache, 'p', 0700)
+  endif
+  call writefile([a:name], s:cmdfile)
+endfunction
+
+function! s:feh_home() abort
+  let l:home = s:cache . '/feh-home'
+  call mkdir(l:home . '/.config/feh', 'p', 0700)
+  " n/Space/Right → action_1 (next), N/Left → action_2 (prev), q/Esc → action_3 (quit)
+  call writefile([
+        \ 'action_1 n space Right',
+        \ 'action_2 N Left BackSpace',
+        \ 'action_3 q Escape',
+        \ ], l:home . '/.config/feh/keys')
+  return l:home
+endfunction
+
+function! s:mpv_conf() abort
+  let l:conf = s:cache . '/mpv-input.conf'
+  let l:sh = 'echo %s > ' . shellescape(s:cmdfile)
+  call writefile([
+        \ 'n     run "/bin/sh" "-c" "echo next > ' . s:cmdfile . '"',
+        \ 'SPACE run "/bin/sh" "-c" "echo next > ' . s:cmdfile . '"',
+        \ 'RIGHT run "/bin/sh" "-c" "echo next > ' . s:cmdfile . '"',
+        \ 'N     run "/bin/sh" "-c" "echo prev > ' . s:cmdfile . '"',
+        \ 'LEFT  run "/bin/sh" "-c" "echo prev > ' . s:cmdfile . '"',
+        \ 'q     run "/bin/sh" "-c" "echo quit > ' . s:cmdfile . '"',
+        \ 'ESC   run "/bin/sh" "-c" "echo quit > ' . s:cmdfile . '"',
+        \ ], l:conf)
+  return l:conf
 endfunction
 
 function! s:cmd_for(exe, path, fullscreen) abort
@@ -82,11 +120,30 @@ function! s:cmd_for(exe, path, fullscreen) abort
     return g:slides_image_cmd + [a:path]
   endif
   if a:exe ==# 'feh'
-    let l:cmd = ['feh', '--auto-zoom', '--hide-pointer', '--no-menus',
+    let l:act = 'printf \%s > ' . shellescape(s:cmdfile)
+    let l:cmd = ['env', 'HOME=' . s:feh_home(),
+          \ 'feh', '--auto-zoom', '--hide-pointer', '--no-menus',
           \ '--image-bg', 'black',
-          \ '--title', a:fullscreen ? 'slides-current' : 'slides-preview-image']
+          \ '--title', a:fullscreen ? 'slides-current' : 'slides-preview-image',
+          \ '--action1', 'printf next > ' . s:cmdfile,
+          \ '--action2', 'printf prev > ' . s:cmdfile,
+          \ '--action3', 'printf quit > ' . s:cmdfile]
     if a:fullscreen
       let l:cmd += ['--fullscreen']
+    endif
+    return l:cmd + ['--', a:path]
+  endif
+  if a:exe ==# 'mpv'
+    let l:cmd = ['mpv', '--image', '--loop-file=inf', '--no-osc',
+          \ '--input-conf=' . s:mpv_conf(),
+          \ '--no-input-default-bindings',
+          \ '--force-window=yes',
+          \ '--title=' . (a:fullscreen ? 'slides-current' : 'slides-preview-image')]
+    if a:fullscreen
+      let l:cmd += ['--fs', '--ontop']
+      if s:mpv_has_focus_on()
+        let l:cmd += ['--focus-on=never']
+      endif
     endif
     return l:cmd + ['--', a:path]
   endif
@@ -96,16 +153,6 @@ function! s:cmd_for(exe, path, fullscreen) abort
       let l:cmd += ['-f']
     endif
     return l:cmd + [a:path]
-  endif
-  if a:exe ==# 'mpv'
-    let l:cmd = ['mpv', '--image', '--loop-file=inf', '--no-osc',
-          \ '--no-input-default-bindings', '--input-vo-keyboard=no',
-          \ '--force-window=yes',
-          \ '--title=' . (a:fullscreen ? 'slides-current' : 'slides-preview-image')]
-    if a:fullscreen
-      let l:cmd += ['--fs', '--ontop']
-    endif
-    return l:cmd + ['--', a:path]
   endif
   if a:exe ==# 'nsxiv' || a:exe ==# 'sxiv'
     let l:cmd = [a:exe, '-b']
@@ -117,15 +164,23 @@ function! s:cmd_for(exe, path, fullscreen) abort
   return [a:exe, a:path]
 endfunction
 
+function! s:mpv_has_focus_on() abort
+  if !executable('mpv')
+    return 0
+  endif
+  let l:h = system('mpv --list-options 2>/dev/null | grep -c focus-on')
+  return l:h =~# '^[1-9]'
+endfunction
+
 function! s:spawn(cmd) abort
   call s:log('spawn ' . join(a:cmd, ' '))
   if exists('*job_start')
     return job_start(a:cmd, {
           \ 'in_io': 'null',
           \ 'out_io': 'file',
-          \ 'out_name': expand('$HOME') . '/.cache/slides.vim/image-out.log',
+          \ 'out_name': s:cache . '/image-out.log',
           \ 'err_io': 'file',
-          \ 'err_name': expand('$HOME') . '/.cache/slides.vim/image-err.log',
+          \ 'err_name': s:cache . '/image-err.log',
           \ 'stoponexit': 'term',
           \ })
   endif
@@ -155,15 +210,55 @@ function! s:alive(job) abort
   return 1
 endfunction
 
-function! s:raise_image(...) abort
-  " Obraz NA WIERZCHU. Vima nie podnosimy — inaczej zasłania feh.
-  if executable('wmctrl')
-    silent! call system('wmctrl -r slides-current -b add,above,fullscreen')
-    silent! call system('wmctrl -a slides-current')
+function! s:start_poll() abort
+  if !isdirectory(s:cache)
+    call mkdir(s:cache, 'p', 0700)
   endif
-  if executable('xdotool') && !empty($WINDOWID)
-    " focus klawiatury na Vim, bez podnoszenia okna
-    silent! call system('xdotool windowfocus ' . $WINDOWID)
+  if filereadable(s:cmdfile)
+    call delete(s:cmdfile)
+  endif
+  if s:poll_timer >= 0 && has('timers')
+    call timer_stop(s:poll_timer)
+  endif
+  if has('timers')
+    let s:poll_timer = timer_start(70, function('s:poll_cmd'), {'repeat': -1})
+  endif
+endfunction
+
+function! s:stop_poll() abort
+  if s:poll_timer >= 0 && has('timers')
+    call timer_stop(s:poll_timer)
+    let s:poll_timer = -1
+  endif
+  if filereadable(s:cmdfile)
+    call delete(s:cmdfile)
+  endif
+endfunction
+
+function! s:poll_cmd(...) abort
+  if !filereadable(s:cmdfile)
+    return
+  endif
+  let l:lines = readfile(s:cmdfile)
+  call delete(s:cmdfile)
+  if empty(l:lines)
+    return
+  endif
+  let l:cmd = substitute(l:lines[0], '\s\+', '', 'g')
+  call s:log('cmd ' . l:cmd)
+  if l:cmd ==# 'next'
+    call slides#next()
+  elseif l:cmd ==# 'prev'
+    call slides#prev()
+  elseif l:cmd ==# 'quit'
+    call slides#quit()
+  endif
+endfunction
+
+function! s:raise_image(...) abort
+  " Tylko always-on-top — NIE aktywujemy okna feh (to kradnie klawisze).
+  if executable('wmctrl')
+    silent! call system('wmctrl -r slides-current -b add,above')
   endif
 endfunction
 
@@ -199,15 +294,12 @@ function! slides#image#show_current(path) abort
     return ''
   endif
   call slides#image#hide_current()
-  let l:cmd = s:cmd_for(l:exe, a:path, 1)
-  let s:job_current = s:spawn(l:cmd)
+  call s:start_poll()
+  let s:job_current = s:spawn(s:cmd_for(l:exe, a:path, 1))
   let s:path_current = a:path
-  call s:log('viewer=' . l:exe . ' job=' . string(s:job_current) . ' path=' . a:path)
+  call s:log('viewer=' . l:exe . ' path=' . a:path)
   if has('timers')
     call timer_start(200, function('s:raise_image'))
-    call timer_start(600, function('s:raise_image'))
-  else
-    call s:raise_image()
   endif
   return ''
 endfunction
@@ -233,6 +325,7 @@ function! slides#image#show_preview(path) abort
 endfunction
 
 function! slides#image#hide_current() abort
+  call s:stop_poll()
   call s:stop(s:job_current)
   let s:job_current = 0
   let s:path_current = ''
