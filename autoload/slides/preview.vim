@@ -81,13 +81,9 @@ function! slides#preview#open(...) abort
   call slides#preview#update(a:0 ? a:1 : {})
   let l:cmd = s:build_cmd()
   if empty(l:cmd)
-    echohl WarningMsg
-    echom 'slides.vim: nie udało się uruchomić okna podglądu. Ustaw g:slides_preview_cmd albo zainstaluj gvim.'
-    echohl None
     if get(g:, 'slides_preview_fallback_split', 0)
       call s:fallback_split()
     endif
-    echom 'Podglad: w drugiej konsoli  vim ' . s:next_file . '  |  :SlidesPreviewListen'
     return
   endif
   let s:job = s:spawn(l:cmd)

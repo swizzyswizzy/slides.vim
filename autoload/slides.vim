@@ -203,38 +203,72 @@ function! s:wm_id() abort
   if !empty($WINDOWID) && $WINDOWID =~# '^\d\+$'
     return $WINDOWID
   endif
+  if executable('wmctrl')
+    let l:pid = getpid()
+    let l:out = system('wmctrl -lp 2>/dev/null')
+    for l:line in split(l:out, '\n')
+      let l:f = split(l:line)
+      if len(l:f) >= 3 && l:f[2] ==# string(l:pid)
+        return l:f[0]
+      endif
+    endfor
+  endif
+  if executable('xdotool')
+    let l:id = substitute(system('xdotool getactivewindow 2>/dev/null'), '\n', '', 'g')
+    if l:id =~# '^\d\+$'
+      return l:id
+    endif
+  endif
   return ''
 endfunction
 
+function! s:fs_log(msg) abort
+  let l:dir = expand('$HOME') . '/.cache/slides.vim'
+  if !isdirectory(l:dir)
+    call mkdir(l:dir, 'p', 0700)
+  endif
+  call writefile([strftime('%H:%M:%S') . ' ' . a:msg], l:dir . '/fullscreen.log', 'a')
+endfunction
+
 function! s:wm_fullscreen(on) abort
-  let l:flag = a:on ? 'add' : 'remove'
   let l:id = s:wm_id()
+  call s:fs_log((a:on ? 'ON' : 'OFF') . ' id=' . l:id . ' WID=' . $WINDOWID . ' sock=' . $ALACRITTY_SOCKET)
+  let l:flag = a:on ? 'add' : 'remove'
+
   if executable('wmctrl')
     if !empty(l:id)
-      silent! call system('wmctrl -i -r ' . l:id . ' -b ' . l:flag . ',fullscreen')
-    else
-      silent! call system('wmctrl -r :ACTIVE: -b ' . l:flag . ',fullscreen')
+      call s:fs_log(system('wmctrl -i -r ' . l:id . ' -b ' . l:flag . ',fullscreen 2>&1'))
     endif
+    " Tytuł Alacritty: „vim …" / „Alacritty"
+    call s:fs_log(system('wmctrl -r :ACTIVE: -b ' . l:flag . ',fullscreen 2>&1'))
+    silent! call system('wmctrl -r vim -b ' . l:flag . ',fullscreen')
+    silent! call system('wmctrl -r Alacritty -b ' . l:flag . ',fullscreen')
+  else
+    call s:fs_log('no wmctrl')
   endif
+
   if executable('xdotool')
+    let l:op = a:on ? 'add' : 'remove'
     if !empty(l:id)
-      silent! call system('xdotool windowstate --' . (a:on ? 'add' : 'remove') . ' FULLSCREEN ' . l:id)
-    else
-      silent! call system('xdotool getactivewindow windowstate --' . (a:on ? 'add' : 'remove') . ' FULLSCREEN')
+      call s:fs_log(system('xdotool windowstate --' . l:op . ' FULLSCREEN ' . l:id . ' 2>&1'))
     endif
+    silent! call system('xdotool getactivewindow windowstate --' . l:op . ' FULLSCREEN')
+  else
+    call s:fs_log('no xdotool')
   endif
-  if a:on && executable('hyprctl')
-    silent! call system('hyprctl dispatch fullscreen 1')
+
+  if executable('hyprctl')
+    silent! call system(a:on ? 'hyprctl dispatch fullscreen 1' : 'hyprctl dispatch fullscreen 0')
   endif
-  if a:on && executable('swaymsg')
-    silent! call system('swaymsg fullscreen enable')
-  elseif !a:on && executable('swaymsg')
-    silent! call system('swaymsg fullscreen disable')
+  if executable('swaymsg')
+    silent! call system(a:on ? 'swaymsg fullscreen enable' : 'swaymsg fullscreen disable')
   endif
-  " Alacritty: zdejmij dekoracje na czas prezentacji (live config).
+
   if !empty($ALACRITTY_SOCKET) && executable('alacritty')
     let l:dec = a:on ? 'None' : 'Full'
-    silent! call system('alacritty msg config "window.decorations=\"' . l:dec . '\""')
+    let l:mode = a:on ? 'Fullscreen' : 'Windowed'
+    call s:fs_log(system('alacritty msg config "window.decorations=\"' . l:dec . '\"" 2>&1'))
+    call s:fs_log(system('alacritty msg config "window.startup_mode=\"' . l:mode . '\"" 2>&1'))
   endif
 endfunction
 
@@ -589,15 +623,17 @@ function! slides#start() abort
   let s:state.source_bufnr = bufnr('%')
   let g:slides_source_dir = slides#image#source_dir(s:state.source_bufnr)
   let s:state.source_winid = exists('*win_getid') ? win_getid() : 0
-  only
+  let l:more = &more
+  set nomore
+  silent! only
   call s:apply_present_options()
   call s:prepare_present_buffer()
   if s:opt('slides_preview', 1)
-    call slides#preview#open(s:state)
+    silent! call slides#preview#open(s:state)
   endif
   call s:render()
-  echo printf('Slides: 1/%d  n/N  q koniec | podglad: vim %s',
-        \ len(s:state.slides), slides#preview#file())
+  let &more = l:more
+  redraw!
 endfunction
 
 function! slides#next() abort
