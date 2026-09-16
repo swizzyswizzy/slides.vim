@@ -170,6 +170,10 @@ function! slides#resize_to(cols, lines) abort
   else
     " W TUI nie ruszamy &columns/&lines — to odpala VimResized w pętli.
     " Tylko CSI 8 t (fizyczne okno); Vim dowie się o rozmiarze z terminala.
+    if s:opt('slides_fullscreen', 1)
+      " Pełny ekran WM — CSI 8 t zdejmuje fullscreen i odsłania pasek.
+      return [l:cols, l:rows]
+    endif
     if s:last_csi[0] != l:rows || s:last_csi[1] != l:cols
       let s:last_csi = [l:rows, l:cols]
       let s:resizing = 1
@@ -195,9 +199,46 @@ function! s:csi_resize(rows, cols) abort
   endif
 endfunction
 
+function! s:wm_id() abort
+  if !empty($WINDOWID) && $WINDOWID =~# '^\d\+$'
+    return $WINDOWID
+  endif
+  return ''
+endfunction
+
+function! s:wm_fullscreen(on) abort
+  let l:flag = a:on ? 'add' : 'remove'
+  let l:id = s:wm_id()
+  if executable('wmctrl')
+    if !empty(l:id)
+      silent! call system('wmctrl -i -r ' . l:id . ' -b ' . l:flag . ',fullscreen')
+    else
+      silent! call system('wmctrl -r :ACTIVE: -b ' . l:flag . ',fullscreen')
+    endif
+  endif
+  if executable('xdotool')
+    if !empty(l:id)
+      silent! call system('xdotool windowstate --' . (a:on ? 'add' : 'remove') . ' FULLSCREEN ' . l:id)
+    else
+      silent! call system('xdotool getactivewindow windowstate --' . (a:on ? 'add' : 'remove') . ' FULLSCREEN')
+    endif
+  endif
+  if a:on && executable('hyprctl')
+    silent! call system('hyprctl dispatch fullscreen 1')
+  endif
+  if a:on && executable('swaymsg')
+    silent! call system('swaymsg fullscreen enable')
+  elseif !a:on && executable('swaymsg')
+    silent! call system('swaymsg fullscreen disable')
+  endif
+  " Alacritty: zdejmij dekoracje na czas prezentacji (live config).
+  if !empty($ALACRITTY_SOCKET) && executable('alacritty')
+    let l:dec = a:on ? 'None' : 'Full'
+    silent! call system('alacritty msg config "window.decorations=\"' . l:dec . '\""')
+  endif
+endfunction
+
 function! s:csi_fullscreen(on) abort
-  " CSI 10 ; 1 t = pełny ekran, CSI 10 ; 2 t = maksymalizacja,
-  " CSI 9 ; 1 t = maximize window (xterm)
   if has('gui_running')
     if a:on
       if has('gui_macvim')
@@ -212,7 +253,9 @@ function! s:csi_fullscreen(on) abort
     endif
     return
   endif
-  let l:seq = a:on ? "\e[10;1t" : "\e[10;0t"
+  call s:wm_fullscreen(a:on)
+  " Zapas: sekwencje xterm (Alacritty zwykle je olewa).
+  let l:seq = a:on ? "\e[10;1t\e[9;1t" : "\e[10;0t\e[9;0t"
   if exists('*echoraw')
     silent! call echoraw(l:seq)
   elseif filewritable('/dev/tty')
@@ -424,7 +467,7 @@ function! s:apply_present_options() abort
     set guioptions-=b
   endif
 
-  if s:opt('slides_fullscreen', 0)
+  if s:opt('slides_fullscreen', 1)
     call s:csi_fullscreen(1)
   endif
 endfunction
