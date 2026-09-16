@@ -357,54 +357,63 @@ function! s:set_font(size) abort
   if l:n < 6.0
     let l:n = 6.0
   endif
-  if l:n > 48.0
-    let l:n = 48.0
+  if l:n > 64.0
+    let l:n = 64.0
   endif
   if abs(l:n - get(s:state, 'font_now', 0)) < 0.15
     return
   endif
   let s:state.font_now = l:n
-  call s:alacritty_msg('config', '-w', s:awid(), printf('font.size=%.1f', l:n))
+  let l:opt = printf('font.size=%.1f', l:n)
+  " -w -1 = wszystkie okna tego procesu Alacritty (pewniejsze niż WINDOW_ID).
+  call s:alacritty_msg('config', '-w', '-1', l:opt)
+  call s:alacritty_msg('config', l:opt)
 endfunction
 
 function! s:capture_native() abort
+  if &columns < 20 || &lines < 8
+    return
+  endif
   if get(s:state, 'nat_cols', 0) >= 20
     return
   endif
-  " Pomiary tylko przy bazowej czcionce (przed skalowaniem slajdu).
   let s:state.nat_cols = &columns
   let s:state.nat_lines = &lines
   let s:state.base_font = s:opt('slides_font_size', 11.0)
-  call s:fs_log(printf('native %dx%d font=%.1f', s:state.nat_cols, s:state.nat_lines, s:state.base_font))
+  call s:fs_log(printf('native %dx%d font=%.1f sock=%s', s:state.nat_cols, s:state.nat_lines, s:state.base_font, $ALACRITTY_SOCKET))
 endfunction
 
 function! s:fit_font(slide) abort
-  if !get(g:, 'slides_in_fs_window', 0)
+  if !s:opt('slides_scale_font', 1)
     return
   endif
-  if empty($ALACRITTY_SOCKET) || !s:opt('slides_scale_font', 1)
+  if empty($ALACRITTY_SOCKET) || !executable('alacritty')
+    call s:fs_log('fit skip: no alacritty socket')
     return
   endif
   if !empty(slides#image#spec(a:slide))
     return
   endif
+  call s:capture_native()
   if get(s:state, 'nat_cols', 0) < 20
+    call s:fs_log('fit skip: no native geometry')
     return
   endif
-  let l:need_c = max([s:max_width(a:slide) + 2 * s:opt('slides_pad_x', 4), 8])
-  let l:need_r = max([len(a:slide) + 2 * s:opt('slides_pad_y', 2) + 2, 4])
+  let l:need_c = max([s:max_width(a:slide) + 2 * s:opt('slides_pad_x', 1), 8])
+  let l:need_r = max([len(a:slide) + 2 * s:opt('slides_pad_y', 1) + 2, 4])
   let l:sw = (s:state.nat_cols * 1.0) / l:need_c
   let l:sh = (s:state.nat_lines * 1.0) / l:need_r
   let l:scale = l:sw < l:sh ? l:sw : l:sh
-  " Zapas, żeby nic nie wychodziło poza krawędź.
-  let l:scale = l:scale * 0.82
-  if l:scale < 0.55
-    let l:scale = 0.55
+  let l:scale = l:scale * s:opt('slides_scale_fill', 0.96)
+  if l:scale < 0.8
+    let l:scale = 0.8
   endif
-  if l:scale > 3.2
-    let l:scale = 3.2
+  if l:scale > 8.0
+    let l:scale = 8.0
   endif
-  call s:set_font(s:state.base_font * l:scale)
+  let l:new = get(s:state, 'base_font', 11.0) * l:scale
+  call s:fs_log(printf('fit need=%dx%d nat=%dx%d scale=%.2f font=%.1f', l:need_c, l:need_r, s:state.nat_cols, s:state.nat_lines, l:scale, l:new))
+  call s:set_font(l:new)
 endfunction
 
 function! s:csi_fullscreen(on) abort
@@ -471,7 +480,7 @@ endfunction
 " ---------------------------------------------------------------------------
 
 function! s:center_lines(lines, width, height) abort
-  let l:pad_x = s:opt('slides_pad_x', 6)
+  let l:pad_x = s:opt('slides_pad_x', 1)
   let l:out = []
   let l:maxw = s:max_width(a:lines)
   let l:left = s:opt('slides_center_h', 1)
@@ -781,10 +790,13 @@ function! slides#start() abort
   call s:render()
   let &more = l:more
   redraw!
-  if get(g:, 'slides_in_fs_window', 0)
+  if !empty($ALACRITTY_SOCKET)
     call s:set_font(s:opt('slides_font_size', 11.0))
     if has('timers')
-      call timer_start(300, function('s:fit_later'))
+      call timer_start(200, function('s:fit_later'))
+      call timer_start(600, function('s:fit_later'))
+    else
+      call s:fit_later()
     endif
   endif
 endfunction

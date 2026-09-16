@@ -96,6 +96,6 @@ let g:slides_pad_y          = 3
 
 ## Bugs
 
-No pull requests. Open a GitHub **Issue** or write to marek`<at>`zytko.net.
+No pull requests. Open a GitHub **Issue** or write to marek<at>zytko.net.
 Include Vim version (`vim --version`), terminal, and the exact command
 that failed. Launch logs live in `~/.cache/slides.vim/`.
