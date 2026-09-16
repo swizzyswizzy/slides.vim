@@ -348,6 +348,36 @@ function! s:spawn_alacritty_fs() abort
   return 1
 endfunction
 
+function! s:awid() abort
+  return !empty($ALACRITTY_WINDOW_ID) ? $ALACRITTY_WINDOW_ID : '-1'
+endfunction
+
+function! s:set_font(size) abort
+  let l:n = a:size
+  if l:n < 6.0
+    let l:n = 6.0
+  endif
+  if l:n > 48.0
+    let l:n = 48.0
+  endif
+  if abs(l:n - get(s:state, 'font_now', 0)) < 0.15
+    return
+  endif
+  let s:state.font_now = l:n
+  call s:alacritty_msg('config', '-w', s:awid(), printf('font.size=%.1f', l:n))
+endfunction
+
+function! s:capture_native() abort
+  if get(s:state, 'nat_cols', 0) >= 20
+    return
+  endif
+  " Pomiary tylko przy bazowej czcionce (przed skalowaniem slajdu).
+  let s:state.nat_cols = &columns
+  let s:state.nat_lines = &lines
+  let s:state.base_font = s:opt('slides_font_size', 11.0)
+  call s:fs_log(printf('native %dx%d font=%.1f', s:state.nat_cols, s:state.nat_lines, s:state.base_font))
+endfunction
+
 function! s:fit_font(slide) abort
   if !get(g:, 'slides_in_fs_window', 0)
     return
@@ -358,25 +388,23 @@ function! s:fit_font(slide) abort
   if !empty(slides#image#spec(a:slide))
     return
   endif
-  if get(s:state, 'fitted_index', -1) == s:state.index
+  if get(s:state, 'nat_cols', 0) < 20
     return
   endif
-  let l:need_c = max([s:max_width(a:slide) + 2 * s:opt('slides_pad_x', 6), 16])
-  let l:need_r = max([len(a:slide) + 2 * s:opt('slides_pad_y', 3) + 3, 6])
-  let l:sw = (&columns * 1.0) / l:need_c
-  let l:sh = (&lines * 1.0) / l:need_r
+  let l:need_c = max([s:max_width(a:slide) + 2 * s:opt('slides_pad_x', 4), 8])
+  let l:need_r = max([len(a:slide) + 2 * s:opt('slides_pad_y', 2) + 2, 4])
+  let l:sw = (s:state.nat_cols * 1.0) / l:need_c
+  let l:sh = (s:state.nat_lines * 1.0) / l:need_r
   let l:scale = l:sw < l:sh ? l:sw : l:sh
-  let l:base = s:opt('slides_font_size', 11.0)
-  let l:new = l:base * l:scale * 0.90
-  if l:new < 8.0
-    let l:new = 8.0
+  " Zapas, żeby nic nie wychodziło poza krawędź.
+  let l:scale = l:scale * 0.82
+  if l:scale < 0.55
+    let l:scale = 0.55
   endif
-  if l:new > 72.0
-    let l:new = 72.0
+  if l:scale > 3.2
+    let l:scale = 3.2
   endif
-  let l:awid = !empty($ALACRITTY_WINDOW_ID) ? $ALACRITTY_WINDOW_ID : '-1'
-  call s:alacritty_msg('config', '-w', l:awid, printf('font.size=%.1f', l:new))
-  let s:state.fitted_index = s:state.index
+  call s:set_font(s:state.base_font * l:scale)
 endfunction
 
 function! s:csi_fullscreen(on) abort
@@ -427,6 +455,9 @@ endfunction
 function! s:on_vim_resized() abort
   if !s:state.active || s:resizing
     return
+  endif
+  if get(g:, 'slides_in_fs_window', 0) && get(s:state, 'nat_cols', 0) < 20
+    call s:capture_native()
   endif
   let l:slide = slides#get_slide(s:state.index)
   if !empty(slides#image#spec(l:slide))
@@ -744,12 +775,17 @@ function! slides#start() abort
   if s:opt('slides_preview', 1)
     silent! call slides#preview#open(s:state)
   endif
+  let s:state.nat_cols = 0
+  let s:state.nat_lines = 0
+  let s:state.font_now = 0
   call s:render()
   let &more = l:more
   redraw!
-  if has('timers') && get(g:, 'slides_in_fs_window', 0)
-    let s:state.fitted_index = -1
-    call timer_start(250, function('s:fit_later'))
+  if get(g:, 'slides_in_fs_window', 0)
+    call s:set_font(s:opt('slides_font_size', 11.0))
+    if has('timers')
+      call timer_start(300, function('s:fit_later'))
+    endif
   endif
 endfunction
 
@@ -757,7 +793,7 @@ function! s:fit_later(...) abort
   if !s:state.active
     return
   endif
-  let s:state.fitted_index = -1
+  call s:capture_native()
   call s:fit_font(slides#get_slide(s:state.index))
 endfunction
 
