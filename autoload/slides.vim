@@ -316,17 +316,65 @@ function! s:send_f11() abort
   return 0
 endfunction
 
-function! s:toggle_term_fullscreen(on) abort
-  if a:on == get(s:state, 'fs_on', 0)
-    return
+function! s:spawn_alacritty_fs() abort
+  if empty($ALACRITTY_SOCKET) || !executable('alacritty')
+    return 0
   endif
-  if s:send_f11()
-    let s:state.fs_on = a:on
+  let l:file = expand('%:p')
+  if empty(l:file) || !filereadable(l:file)
+    return 0
   endif
+  let l:vim = empty(v:progpath) ? 'vim' : v:progpath
+  let l:cmd = [
+        \ 'alacritty', 'msg', '--socket', $ALACRITTY_SOCKET,
+        \ 'create-window',
+        \ '--working-directory', getcwd(),
+        \ '-T', 'slides',
+        \ '-o', 'window.startup_mode="Fullscreen"',
+        \ '-o', 'window.decorations="None"',
+        \ '-e', l:vim,
+        \ '-c', 'let g:slides_in_fs_window=1',
+        \ '-c', 'SlidesStart',
+        \ l:file,
+        \ ]
+  call s:fs_log('spawn ' . join(l:cmd, ' '))
+  if exists('*job_start')
+    call job_start(l:cmd, {'in_io': 'null', 'out_io': 'null', 'err_io': 'null'})
+  else
+    call system(join(map(copy(l:cmd), 'shellescape(v:val)'), ' ') . ' &')
+  endif
+  return 1
 endfunction
 
-function! s:fs_on_tick(...) abort
-  call s:toggle_term_fullscreen(1)
+function! s:fit_font(slide) abort
+  if !get(g:, 'slides_in_fs_window', 0)
+    return
+  endif
+  if empty($ALACRITTY_SOCKET) || !s:opt('slides_scale_font', 1)
+    return
+  endif
+  if !empty(slides#image#spec(a:slide))
+    return
+  endif
+  if get(s:state, 'fitted_index', -1) == s:state.index
+    return
+  endif
+  let l:need_c = max([s:max_width(a:slide) + 2 * s:opt('slides_pad_x', 6), 16])
+  let l:need_r = max([len(a:slide) + 2 * s:opt('slides_pad_y', 3) + 3, 6])
+  let l:sw = (&columns * 1.0) / l:need_c
+  let l:sh = (&lines * 1.0) / l:need_r
+  let l:scale = l:sw < l:sh ? l:sw : l:sh
+  let l:base = s:opt('slides_font_size', 11.0)
+  let l:new = l:base * l:scale * 0.90
+  if l:new < 8.0
+    let l:new = 8.0
+  endif
+  if l:new > 72.0
+    let l:new = 72.0
+  endif
+  let l:awid = !empty($ALACRITTY_WINDOW_ID) ? $ALACRITTY_WINDOW_ID : '-1'
+  call s:alacritty_msg('config', '-w', l:awid, printf('font.size=%.1f', l:new))
+  let s:state.fitted_index = s:state.index
 endfunction
 
 function! s:csi_fullscreen(on) abort
@@ -342,13 +390,9 @@ function! s:csi_fullscreen(on) abort
         silent! set nofullscreen
       endif
     endif
-    return
   endif
-  " Alacritty+Wayland: tylko prawdziwy F11 (ToggleFullscreen w toml).
-  if a:on && has('timers')
-    call timer_start(100, function('s:fs_on_tick'))
-  else
-    call s:toggle_term_fullscreen(a:on)
+  if !a:on && get(g:, 'slides_in_fs_window', 0) && executable('alacritty') && !empty($ALACRITTY_SOCKET)
+    call s:alacritty_msg('config', '--reset')
   endif
 endfunction
 
@@ -448,6 +492,7 @@ function! s:render() abort
     call s:paint_lines(l:slide, max([l:cols, &columns]), max([l:rows, &lines]))
   endif
   call slides#preview#update(s:state)
+  call s:fit_font(l:slide)
 endfunction
 
 function! s:paint(cols, rows) abort
@@ -683,6 +728,11 @@ function! slides#start() abort
   if s:state.active
     call slides#quit()
   endif
+  if s:opt('slides_fullscreen', 1) && !get(g:, 'slides_in_fs_window', 0)
+    if s:spawn_alacritty_fs()
+      return
+    endif
+  endif
   let l:slides = slides#parse_buffer(bufnr('%'))
   if empty(l:slides)
     echohl ErrorMsg
@@ -707,6 +757,18 @@ function! slides#start() abort
   call s:render()
   let &more = l:more
   redraw!
+  if has('timers') && get(g:, 'slides_in_fs_window', 0)
+    let s:state.fitted_index = -1
+    call timer_start(250, function('s:fit_later'))
+  endif
+endfunction
+
+function! s:fit_later(...) abort
+  if !s:state.active
+    return
+  endif
+  let s:state.fitted_index = -1
+  call s:fit_font(slides#get_slide(s:state.index))
 endfunction
 
 function! slides#next() abort
@@ -767,5 +829,8 @@ function! slides#quit() abort
     execute 'keepalt buffer' s:state.source_bufnr
   endif
   let s:state.slides = []
-  echo 'Koniec prezentacji'
+  let s:state.fitted_index = -1
+  if get(g:, 'slides_in_fs_window', 0)
+    silent! qa!
+  endif
 endfunction
