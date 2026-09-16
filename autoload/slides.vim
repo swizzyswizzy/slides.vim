@@ -364,10 +364,8 @@ function! s:set_font(size) abort
     return
   endif
   let s:state.font_now = l:n
-  let l:opt = printf('font.size=%.1f', l:n)
-  " -w -1 = wszystkie okna tego procesu Alacritty (pewniejsze niż WINDOW_ID).
-  call s:alacritty_msg('config', '-w', '-1', l:opt)
-  call s:alacritty_msg('config', l:opt)
+  " Domyślnie $ALACRITTY_WINDOW_ID — tylko to okno, nie edytor i nie preview.
+  call s:alacritty_msg('config', printf('font.size=%.1f', l:n))
 endfunction
 
 function! s:capture_native() abort
@@ -568,6 +566,33 @@ function! s:paint_lines(slide, cols, rows) abort
 
   call s:with_present_buf('call s:write_lines(' . string(l:body) . ')')
   silent! normal! gg
+  call s:hide_cursor()
+endfunction
+
+function! s:hide_cursor() abort
+  " Ukryj kursor terminala (Alacritty honoruje t_ve / DEC ?25l).
+  let &t_ve = ''
+  if exists('*echoraw')
+    silent! call echoraw("\e[?25l")
+  elseif filewritable('/dev/tty')
+    silent! call writefile(["\e[?25l"], '/dev/tty', 'b')
+  endif
+  highlight! Cursor ctermfg=NONE ctermbg=NONE guifg=NONE guibg=NONE
+  highlight! lCursor ctermfg=NONE ctermbg=NONE guifg=NONE guibg=NONE
+endfunction
+
+function! s:show_cursor() abort
+  let l:ve = get(s:state.saved, 't_ve', '')
+  if empty(l:ve)
+    set t_ve&
+  else
+    let &t_ve = l:ve
+  endif
+  if exists('*echoraw')
+    silent! call echoraw("\e[?25h")
+  elseif filewritable('/dev/tty')
+    silent! call writefile(["\e[?25h"], '/dev/tty', 'b')
+  endif
 endfunction
 
 function! s:write_lines(lines) abort
@@ -617,6 +642,7 @@ function! s:apply_present_options() abort
         \ 'hidden': &hidden,
         \ 'columns': &columns,
         \ 'lines': &lines,
+        \ 't_ve': &t_ve,
         \ }
   if has('gui_running')
     try
@@ -635,6 +661,9 @@ function! s:apply_present_options() abort
   set noshowmode
   set noruler
   set hidden
+  set nocursorline
+  set nocursorcolumn
+  call s:hide_cursor()
   if has('gui_running')
     set guioptions-=T
     set guioptions-=m
@@ -649,6 +678,7 @@ function! s:apply_present_options() abort
 endfunction
 
 function! s:restore_options() abort
+  call s:show_cursor()
   call s:csi_fullscreen(0)
   let l:s = s:state.saved
   if empty(l:s)
@@ -784,20 +814,16 @@ function! slides#start() abort
   if s:opt('slides_preview', 1)
     silent! call slides#preview#open(s:state)
   endif
-  let s:state.nat_cols = 0
-  let s:state.nat_lines = 0
+  if get(s:state, 'nat_cols', 0) < 20
+    let s:state.nat_cols = 0
+    let s:state.nat_lines = 0
+  endif
   let s:state.font_now = 0
   call s:render()
   let &more = l:more
   redraw!
-  if !empty($ALACRITTY_SOCKET)
-    call s:set_font(s:opt('slides_font_size', 11.0))
-    if has('timers')
-      call timer_start(200, function('s:fit_later'))
-      call timer_start(600, function('s:fit_later'))
-    else
-      call s:fit_later()
-    endif
+  if !empty($ALACRITTY_SOCKET) && has('timers')
+    call timer_start(250, function('s:fit_later'))
   endif
 endfunction
 
