@@ -61,17 +61,27 @@ function! slides#image#source_dir(bufnr) abort
   return fnamemodify(fnamemodify(l:name, ':p'), ':h')
 endfunction
 
+function! s:plugin_root() abort
+  return expand('<sfile>:p:h:h:h')
+endfunction
+
+function! s:builtin_view() abort
+  return s:plugin_root() . '/autoload/slides/view.py'
+endfunction
+
 function! slides#image#viewer() abort
   if !empty(get(g:, 'slides_image_viewer', ''))
     return g:slides_image_viewer
   endif
-  " mpv: izolowany input.conf + --ontop; feh: działa u Ciebie, klawisze przez --action
+  if executable('python3') && filereadable(s:builtin_view())
+    return 'slides-view'
+  endif
   for l:exe in ['mpv', 'feh', 'imv', 'nsxiv', 'sxiv']
     if executable(l:exe)
       return l:exe
     endif
   endfor
-  return 'feh'
+  return 'slides-view'
 endfunction
 
 function! s:log(msg) abort
@@ -118,6 +128,9 @@ endfunction
 function! s:cmd_for(exe, path, fullscreen) abort
   if type(get(g:, 'slides_image_cmd', 0)) == type([]) && !empty(g:slides_image_cmd)
     return g:slides_image_cmd + [a:path]
+  endif
+  if a:exe ==# 'slides-view'
+    return ['python3', s:builtin_view(), '--cmd', s:cmdfile, a:path]
   endif
   if a:exe ==# 'feh'
     let l:act = 'printf \%s > ' . shellescape(s:cmdfile)
@@ -285,10 +298,14 @@ function! slides#image#show_current(path) abort
     call s:log('missing file ' . a:path)
     return 'brak pliku: ' . a:path
   endif
-  if !executable(l:exe)
+  if l:exe !=# 'slides-view' && !executable(l:exe)
     call slides#image#hide_current()
     call s:log('missing viewer ' . l:exe)
-    return 'brak programu ' . l:exe . ' — zainstaluj: sudo apt install feh'
+    return 'brak programu ' . l:exe . ' — zainstaluj python3 albo feh/mpv'
+  endif
+  if l:exe ==# 'slides-view' && !executable('python3')
+    call slides#image#hide_current()
+    return 'brak python3 — potrzebny do podglądu obrazu'
   endif
   if s:path_current ==# a:path && s:alive(s:job_current)
     return ''
@@ -305,6 +322,9 @@ function! slides#image#show_current(path) abort
 endfunction
 
 function! slides#image#show_preview(path) abort
+  if slides#image#viewer() ==# 'slides-view'
+    return
+  endif
   if empty(a:path) || !filereadable(a:path)
     call slides#image#hide_preview()
     return
