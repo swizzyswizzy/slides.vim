@@ -38,15 +38,10 @@ file:shot.png
 End
 ```
 
-A slide that is exactly `file:<path>` opens the image full-screen in an
-external viewer (first executable of `feh`, `imv`, `mpv`, `nsxiv`, `sxiv`;
-falls back to `feh`). Path is relative to the `.slides` file. Vim keeps
-the key bindings; the viewer is `always-on-top`. Install `feh` if none
-of the others is present.
-
-```vim
-let g:slides_image_viewer = 'feh'
-```
+A slide that is exactly `file:<path>` opens the image full-screen in the
+bundled viewer (`autoload/slides/view.py`, GTK then Tk). Path is relative
+to the `.slides` file. Requires `python3`. Same keys as text slides:
+`n` / `N` / `q`.
 
 ```
 :SlidesStart

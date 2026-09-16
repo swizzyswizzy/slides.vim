@@ -42,11 +42,9 @@ czyli sekwencja >
     file:shot.png
 <
 
-Slajd złożony z jednej linii `file:`{ścieżka} otwiera obraz pełnym
-ekranem w `feh` / `imv` / `mpv` / `nsxiv` / `sxiv` (pierwszy znaleziony;
-w razie braku wszystkich — `feh`). Ścieżka względem pliku prezentacji.
-
-*g:slides_image_viewer* wymusza binarkę.
+Slajd z linią `file:`{ścieżka} otwiera obraz pełnym ekranem w
+`autoload/slides/view.py` (GTK, potem Tk). Wymaga `python3`.
+Ścieżka względem pliku prezentacji. Klawisze: `n` `N` `q`.
 
 Pliki `*.slides` i `*.vsl` dostają filetype `slides`.
 

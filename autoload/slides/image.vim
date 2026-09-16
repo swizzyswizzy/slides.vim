@@ -1,11 +1,9 @@
 " autoload/slides/image.vim
-" Obraz na wierzchu; n/N/q działają nawet gdy fokus ma podglądarka.
-" Podglądarka pisze komendę do pliku, timer w Vimie ją wykonuje.
+" Slajd file:obraz.jpg → pełny ekran w bundled view.py (GTK, potem Tk).
+" view.py pisze next/prev/quit do pliku; timer w Vimie to wykonuje.
 
 let s:job_current = 0
-let s:job_preview = 0
 let s:path_current = ''
-let s:path_preview = ''
 let s:poll_timer = -1
 let s:cache = expand('$HOME') . '/.cache/slides.vim'
 let s:cmdfile = s:cache . '/cmd'
@@ -65,23 +63,8 @@ function! s:plugin_root() abort
   return expand('<sfile>:p:h:h:h')
 endfunction
 
-function! s:builtin_view() abort
+function! s:view_py() abort
   return s:plugin_root() . '/autoload/slides/view.py'
-endfunction
-
-function! slides#image#viewer() abort
-  if !empty(get(g:, 'slides_image_viewer', ''))
-    return g:slides_image_viewer
-  endif
-  if executable('python3') && filereadable(s:builtin_view())
-    return 'slides-view'
-  endif
-  for l:exe in ['mpv', 'feh', 'imv', 'nsxiv', 'sxiv']
-    if executable(l:exe)
-      return l:exe
-    endif
-  endfor
-  return 'slides-view'
 endfunction
 
 function! s:log(msg) abort
@@ -89,100 +72,6 @@ function! s:log(msg) abort
     call mkdir(s:cache, 'p', 0700)
   endif
   call writefile([strftime('%H:%M:%S') . ' ' . a:msg], s:cache . '/image.log', 'a')
-endfunction
-
-function! s:write_cmd(name) abort
-  if !isdirectory(s:cache)
-    call mkdir(s:cache, 'p', 0700)
-  endif
-  call writefile([a:name], s:cmdfile)
-endfunction
-
-function! s:feh_home() abort
-  let l:home = s:cache . '/feh-home'
-  call mkdir(l:home . '/.config/feh', 'p', 0700)
-  " n/Space/Right → action_1 (next), N/Left → action_2 (prev), q/Esc → action_3 (quit)
-  call writefile([
-        \ 'action_1 n space Right',
-        \ 'action_2 N Left BackSpace',
-        \ 'action_3 q Escape',
-        \ ], l:home . '/.config/feh/keys')
-  return l:home
-endfunction
-
-function! s:mpv_conf() abort
-  let l:conf = s:cache . '/mpv-input.conf'
-  let l:sh = 'echo %s > ' . shellescape(s:cmdfile)
-  call writefile([
-        \ 'n     run "/bin/sh" "-c" "echo next > ' . s:cmdfile . '"',
-        \ 'SPACE run "/bin/sh" "-c" "echo next > ' . s:cmdfile . '"',
-        \ 'RIGHT run "/bin/sh" "-c" "echo next > ' . s:cmdfile . '"',
-        \ 'N     run "/bin/sh" "-c" "echo prev > ' . s:cmdfile . '"',
-        \ 'LEFT  run "/bin/sh" "-c" "echo prev > ' . s:cmdfile . '"',
-        \ 'q     run "/bin/sh" "-c" "echo quit > ' . s:cmdfile . '"',
-        \ 'ESC   run "/bin/sh" "-c" "echo quit > ' . s:cmdfile . '"',
-        \ ], l:conf)
-  return l:conf
-endfunction
-
-function! s:cmd_for(exe, path, fullscreen) abort
-  if type(get(g:, 'slides_image_cmd', 0)) == type([]) && !empty(g:slides_image_cmd)
-    return g:slides_image_cmd + [a:path]
-  endif
-  if a:exe ==# 'slides-view'
-    return ['python3', s:builtin_view(), '--cmd', s:cmdfile, a:path]
-  endif
-  if a:exe ==# 'feh'
-    let l:act = 'printf \%s > ' . shellescape(s:cmdfile)
-    let l:cmd = ['env', 'HOME=' . s:feh_home(),
-          \ 'feh', '--auto-zoom', '--hide-pointer', '--no-menus',
-          \ '--image-bg', 'black',
-          \ '--title', a:fullscreen ? 'slides-current' : 'slides-preview-image',
-          \ '--action1', 'printf next > ' . s:cmdfile,
-          \ '--action2', 'printf prev > ' . s:cmdfile,
-          \ '--action3', 'printf quit > ' . s:cmdfile]
-    if a:fullscreen
-      let l:cmd += ['--fullscreen']
-    endif
-    return l:cmd + ['--', a:path]
-  endif
-  if a:exe ==# 'mpv'
-    let l:cmd = ['mpv', '--image', '--loop-file=inf', '--no-osc',
-          \ '--input-conf=' . s:mpv_conf(),
-          \ '--no-input-default-bindings',
-          \ '--force-window=yes',
-          \ '--title=' . (a:fullscreen ? 'slides-current' : 'slides-preview-image')]
-    if a:fullscreen
-      let l:cmd += ['--fs', '--ontop']
-      if s:mpv_has_focus_on()
-        let l:cmd += ['--focus-on=never']
-      endif
-    endif
-    return l:cmd + ['--', a:path]
-  endif
-  if a:exe ==# 'imv'
-    let l:cmd = ['imv']
-    if a:fullscreen
-      let l:cmd += ['-f']
-    endif
-    return l:cmd + [a:path]
-  endif
-  if a:exe ==# 'nsxiv' || a:exe ==# 'sxiv'
-    let l:cmd = [a:exe, '-b']
-    if a:fullscreen
-      let l:cmd += ['-f']
-    endif
-    return l:cmd + ['--', a:path]
-  endif
-  return [a:exe, a:path]
-endfunction
-
-function! s:mpv_has_focus_on() abort
-  if !executable('mpv')
-    return 0
-  endif
-  let l:h = system('mpv --list-options 2>/dev/null | grep -c focus-on')
-  return l:h =~# '^[1-9]'
 endfunction
 
 function! s:spawn(cmd) abort
@@ -268,80 +157,39 @@ function! s:poll_cmd(...) abort
   endif
 endfunction
 
-function! s:raise_image(...) abort
-  " Tylko always-on-top — NIE aktywujemy okna feh (to kradnie klawisze).
-  if executable('wmctrl')
-    silent! call system('wmctrl -r slides-current -b add,above')
-  endif
-endfunction
-
-function! s:place_preview_image(...) abort
-  let l:pos = get(g:, 'slides_preview_winpos', [])
-  if len(l:pos) < 2
-    return
-  endif
-  if executable('wmctrl')
-    silent! call system(printf(
-          \ 'wmctrl -r slides-preview-image -e 0,%d,%d,-1,-1',
-          \ l:pos[0], l:pos[1]))
-  endif
-endfunction
-
 function! slides#image#show_current(path) abort
   if empty(a:path)
     call slides#image#hide_current()
     return 'empty path'
   endif
-  let l:exe = slides#image#viewer()
   if !filereadable(a:path)
     call slides#image#hide_current()
     call s:log('missing file ' . a:path)
     return 'brak pliku: ' . a:path
   endif
-  if l:exe !=# 'slides-view' && !executable(l:exe)
-    call slides#image#hide_current()
-    call s:log('missing viewer ' . l:exe)
-    return 'brak programu ' . l:exe . ' — zainstaluj python3 albo feh/mpv'
-  endif
-  if l:exe ==# 'slides-view' && !executable('python3')
+  if !executable('python3')
     call slides#image#hide_current()
     return 'brak python3 — potrzebny do podglądu obrazu'
+  endif
+  let l:py = s:view_py()
+  if !filereadable(l:py)
+    call slides#image#hide_current()
+    return 'brak ' . l:py
   endif
   if s:path_current ==# a:path && s:alive(s:job_current)
     return ''
   endif
   call slides#image#hide_current()
   call s:start_poll()
-  let s:job_current = s:spawn(s:cmd_for(l:exe, a:path, 1))
+  let s:job_current = s:spawn(['python3', l:py, '--cmd', s:cmdfile, a:path])
   let s:path_current = a:path
-  call s:log('viewer=' . l:exe . ' path=' . a:path)
-  if has('timers')
-    call timer_start(200, function('s:raise_image'))
-  endif
+  call s:log('viewer=view.py path=' . a:path)
   return ''
 endfunction
 
-function! slides#image#show_preview(path) abort
-  if slides#image#viewer() ==# 'slides-view'
-    return
-  endif
-  if empty(a:path) || !filereadable(a:path)
-    call slides#image#hide_preview()
-    return
-  endif
-  if s:path_preview ==# a:path && s:alive(s:job_preview)
-    return
-  endif
-  let l:exe = slides#image#viewer()
-  if !executable(l:exe)
-    return
-  endif
-  call slides#image#hide_preview()
-  let s:job_preview = s:spawn(s:cmd_for(l:exe, a:path, 0))
-  let s:path_preview = a:path
-  if has('timers')
-    call timer_start(400, function('s:place_preview_image'))
-  endif
+function! slides#image#show_preview(...) abort
+  " Jeden podglądarka: tylko bieżący slajd. Następny obraz jest etykietą w Vimie.
+  return
 endfunction
 
 function! slides#image#hide_current() abort
@@ -352,12 +200,9 @@ function! slides#image#hide_current() abort
 endfunction
 
 function! slides#image#hide_preview() abort
-  call s:stop(s:job_preview)
-  let s:job_preview = 0
-  let s:path_preview = ''
+  return
 endfunction
 
 function! slides#image#close() abort
   call slides#image#hide_current()
-  call slides#image#hide_preview()
 endfunction
