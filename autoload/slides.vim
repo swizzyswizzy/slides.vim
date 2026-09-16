@@ -333,6 +333,8 @@ function! s:spawn_alacritty_fs() abort
         \ '-o', 'window.startup_mode="Fullscreen"',
         \ '-o', 'window.decorations="None"',
         \ '-e', l:vim,
+        \ '-n', '-R',
+        \ '--cmd', 'set noswapfile shortmess+=A',
         \ '-c', 'let g:slides_in_fs_window=1',
         \ '-c', 'SlidesStart',
         \ l:file,
@@ -603,22 +605,10 @@ function! s:apply_present_options() abort
 
   if s:opt('slides_fullscreen', 1)
     call s:csi_fullscreen(1)
-    if has('timers')
-      call timer_start(80, function('s:fs_enter'))
-    else
-      call s:toggle_term_fullscreen(1)
-    endif
-  endif
-endfunction
-
-function! s:fs_enter(...) abort
-  if get(s:state, 'active', 0)
-    call s:toggle_term_fullscreen(1)
   endif
 endfunction
 
 function! s:restore_options() abort
-  call s:toggle_term_fullscreen(0)
   call s:csi_fullscreen(0)
   let l:s = s:state.saved
   if empty(l:s)
