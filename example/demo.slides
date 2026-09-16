@@ -1,15 +1,20 @@
-vim-slides
+swizzyswizzy/vim-slides
+
 prezentacje w terminalu
 
+Skróty klawiszowe jak w Vim'ie:
 
-n  następny slajd
-N  poprzedni slajd
-s  podgląd na drugim monitorze
-q  koniec
+n  - następny slajd
+N  - poprzedni slajd
+s  - podgląd na drugim monitorze
+
+gg - pierwszy slajd
+G  - ostatni slajd
+
+q/:q  - koniec
 ~~~~
-Format
+Format slajdów to zwykły tekst.
 
-Zwykły tekst.
 Kolejny slajd zaczyna się po linii
 złożonej z czterech znaków tyldy.
 ~~~~
@@ -21,33 +26,71 @@ linii bieżącego slajdu.
 
 Ten slajd jest wąski.
 ~~~~
-Ten slajd jest wyraźnie szerszy od poprzedniego — obserwuj ramkę okna.
+Ten slajd jest wyraźnie szerszy od poprzedniego bo zdanie jest baaaaaaaaaaaaaaaaaaardzo długie
 
-Najdłuższa linia steruje columns.
-Liczba wierszy steruje lines.
+
+Najdłuższa linia steruje szerokością
 ~~~~
-Podgląd
+Liczba wierszy steruje wysokością:
 
-Na drugim monitorze widać
-NASTĘPNY slajd.
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
+ten slajd jest bardzo wysoki
 
-Jeśli nie da się otworzyć
-osobnego procesu, powstanie
-pionowy podział.
+~~~~
+Na drugim monitorze widać podgląd kolejnego slajdu.
+
+Kliknij "s" aby wł/wył to okno pogdlądu
 ~~~~
 Konfiguracja (vimrc)
 
+let g:slides_pad_x = 1
+let g:slides_pad_y = 1
+let g:slides_scale_fill = 0.96
+
 let g:slides_resize_mode = 'current'
-let g:slides_pad_x = 8
 let g:slides_preview_winpos = [1920, 40]
 let g:slides_vim_exe = 'gvim'
 ~~~~
-Obraz
+Wyświetlanie obrazków:
 
-Sam slajd, jedna linia:
+Wystarczy wpisać w pojedynczej lini osobnego slajdu:
 
-file:dziabaki.jpeg
+"file:dziabaki.jpeg"
+Bez cudzysłowiów
 
-(plik liczony od katalogu prezentacji)
 ~~~~
-Gotowe.
+file:dziabaki.jpeg
+~~~~
+
+        Autor:                          Błędy i sugestie:
+Marek Żytko Software™                   marek <at> zytko.net
+
+
+
+
+Koty:
+Kaczawa i Benek
+
+~~~~
+file:benek.jpeg
+~~~~
+file:kaczawa.jpeg
+~~~~
